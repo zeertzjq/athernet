@@ -25,6 +25,14 @@
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 
+#define E(fn, pcm, ...)                                                        \
+  do {                                                                         \
+    int err_ = fn(pcm, ##__VA_ARGS__);                                         \
+    if (err_ < 0) {                                                            \
+      fprintf(stderr, "%s %s error: %s\n", #fn, #pcm, snd_strerror(err_));     \
+    }                                                                          \
+  } while (0)
+
 static const char *device = "default";
 static int16_t fg[RATE * 10];
 static int16_t bg[RATE / 5];
@@ -33,15 +41,15 @@ static snd_pcm_t *playback;
 static int volume = 2000;
 
 static void *play_bg(void *args) {
-  snd_pcm_prepare(playback);
+  E(snd_pcm_prepare, playback);
   const int half = ARRAY_SIZE(fg) / ARRAY_SIZE(bg) / 2;
   for (int i = -half; i < half; i++) {
     for (int j = 0; j < ARRAY_SIZE(bg); j++) {
       bg[j] = cos(j * (abs(i) + 10) * M_PI / (RATE / 100.)) * volume;
     }
-    snd_pcm_writei(playback, bg, ARRAY_SIZE(bg));
+    E(snd_pcm_writei, playback, bg, ARRAY_SIZE(bg));
   }
-  snd_pcm_drain(playback);
+  E(snd_pcm_drain, playback);
   return NULL;
 }
 
@@ -67,31 +75,15 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int err;
-
   if (record) {
-    if ((err = snd_pcm_open(&capture, device, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
-      fprintf(stderr, "Capture open error: %s\n", snd_strerror(err));
-      return EXIT_FAILURE;
-    }
-    if ((err = snd_pcm_set_params(capture, SND_PCM_FORMAT_S16_LE,
-                                  SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1,
-                                  15000)) < 0) {
-      fprintf(stderr, "Capture open error: %s\n", snd_strerror(err));
-      return EXIT_FAILURE;
-    }
+    E(snd_pcm_open, &capture, device, SND_PCM_STREAM_CAPTURE, 0);
+    E(snd_pcm_set_params, capture, SND_PCM_FORMAT_S16_LE,
+      SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
   }
 
-  if ((err = snd_pcm_open(&playback, device, SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-    fprintf(stderr, "Playback open error: %s\n", snd_strerror(err));
-    return EXIT_FAILURE;
-  }
-  if ((err = snd_pcm_set_params(playback, SND_PCM_FORMAT_S16_LE,
-                                SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1,
-                                15000)) < 0) {
-    fprintf(stderr, "Playback open error: %s\n", snd_strerror(err));
-    return EXIT_FAILURE;
-  }
+  E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
+  E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
+    SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
 
   pthread_t bg_thread;
   if (play && record) {
@@ -99,15 +91,10 @@ int main(int argc, char **argv) {
   }
 
   if (record) {
-    snd_pcm_prepare(capture);
-    int frames = snd_pcm_readi(capture, fg, ARRAY_SIZE(fg));
-    if (frames < 0) {
-      fprintf(stderr, "Capture error: %s\n", snd_strerror(frames));
-    } else {
-      fprintf(stderr, "Capture: %d frames\n", frames);
-    }
-    snd_pcm_drain(capture);
-    snd_pcm_close(capture);
+    E(snd_pcm_prepare, capture);
+    E(snd_pcm_readi, capture, fg, ARRAY_SIZE(fg));
+    E(snd_pcm_drain, capture);
+    E(snd_pcm_close, capture);
   } else {
     for (int i = 0; i < ARRAY_SIZE(fg); i++) {
       double t = i / (double)RATE;
@@ -119,14 +106,9 @@ int main(int argc, char **argv) {
     pthread_join(bg_thread, NULL);
   }
 
-  snd_pcm_prepare(playback);
-  int frames = snd_pcm_writei(playback, fg, ARRAY_SIZE(fg));
-  if (frames < 0) {
-    fprintf(stderr, "Playback error: %s\n", snd_strerror(frames));
-  } else {
-    fprintf(stderr, "Playback: %d frames\n", frames);
-  }
-  snd_pcm_drain(playback);
-  snd_pcm_close(playback);
+  E(snd_pcm_prepare, playback);
+  E(snd_pcm_writei, playback, fg, ARRAY_SIZE(fg));
+  E(snd_pcm_drain, playback);
+  E(snd_pcm_close, playback);
   return EXIT_SUCCESS;
 }
