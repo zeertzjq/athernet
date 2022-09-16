@@ -22,20 +22,23 @@
 
 #define RATE 48000
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define LEN(s) (sizeof(s) - 1)
+#define S_LEN(s) (s), LEN(s)
 
 static const char *device = "default";
-static int16_t fg_buf[RATE * 10];
-static int16_t bg_buf[RATE / 5];
+static int16_t fg[RATE * 10];
+static int16_t bg[RATE / 5];
 static snd_pcm_t *capture;
 static snd_pcm_t *playback;
+static int volume = 2000;
 
 static void *play_bg(void *args) {
-  const int half = ARRAY_SIZE(fg_buf) / ARRAY_SIZE(bg_buf) / 2;
+  const int half = ARRAY_SIZE(fg) / ARRAY_SIZE(bg) / 2;
   for (int i = -half; i < half; i++) {
-    for (int j = 0; j < ARRAY_SIZE(bg_buf); j++) {
-      bg_buf[j] = cos(j * (abs(i) + 10) * M_PI / (RATE / 100.)) * 2000;
+    for (int j = 0; j < ARRAY_SIZE(bg); j++) {
+      bg[j] = cos(j * (abs(i) + 10) * M_PI / (RATE / 100.)) * volume;
     }
-    snd_pcm_writei(playback, bg_buf, ARRAY_SIZE(bg_buf));
+    snd_pcm_writei(playback, bg, ARRAY_SIZE(bg));
   }
   return NULL;
 }
@@ -44,16 +47,21 @@ int main(int argc, char **argv) {
   bool play = false;
   bool record = false;
 
-  for (int i = 0; i < argc; i++) {
+  for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--play") == 0) {
       play = true;
     } else if (strcmp(argv[i], "--record") == 0) {
       record = true;
+    } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
+      volume = atoi(argv[i] + LEN("--volume="));
+    } else {
+      fprintf(stderr, "Invalid argument: %s\n", argv[i]);
+      return EXIT_FAILURE;
     }
   }
 
   if (!play && !record) {
-    fprintf(stderr, "At least one of --play and --record must be specified.\n");
+    fprintf(stderr, "Not enough arguments\n");
     return EXIT_FAILURE;
   }
 
@@ -89,14 +97,18 @@ int main(int argc, char **argv) {
   }
 
   if (record) {
-    int frames = snd_pcm_readi(capture, fg_buf, ARRAY_SIZE(fg_buf));
-    fprintf(stderr, "Capture: %d frames\n", frames);
+    int frames = snd_pcm_readi(capture, fg, ARRAY_SIZE(fg));
+    if (frames < 0) {
+      fprintf(stderr, "Capture error: %s\n", snd_strerror(frames));
+    } else {
+      fprintf(stderr, "Capture: %d frames\n", frames);
+    }
     snd_pcm_drain(capture);
     snd_pcm_close(capture);
   } else {
-    for (int i = 0; i < ARRAY_SIZE(fg_buf); i++) {
+    for (int i = 0; i < ARRAY_SIZE(fg); i++) {
       double t = i / (double)RATE;
-      fg_buf[i] = (sin(2 * M_PI * 1000 * t) + sin(2 * M_PI * 10000 * t)) * 2000;
+      fg[i] = (sin(2 * M_PI * 1000 * t) + sin(2 * M_PI * 10000 * t)) * volume;
     }
   }
 
@@ -104,8 +116,12 @@ int main(int argc, char **argv) {
     pthread_join(bg_thread, NULL);
   }
 
-  int frames = snd_pcm_writei(playback, fg_buf, ARRAY_SIZE(fg_buf));
-  fprintf(stderr, "Playback: %d frames\n", frames);
+  int frames = snd_pcm_writei(playback, fg, ARRAY_SIZE(fg));
+  if (frames < 0) {
+    fprintf(stderr, "Playback error: %s\n", snd_strerror(frames));
+  } else {
+    fprintf(stderr, "Playback: %d frames\n", frames);
+  }
   snd_pcm_drain(playback);
   snd_pcm_close(playback);
   return EXIT_SUCCESS;
