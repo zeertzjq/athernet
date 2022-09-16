@@ -33,6 +33,7 @@ static snd_pcm_t *playback;
 static int volume = 2000;
 
 static void *play_bg(void *args) {
+  snd_pcm_prepare(playback);
   const int half = ARRAY_SIZE(fg) / ARRAY_SIZE(bg) / 2;
   for (int i = -half; i < half; i++) {
     for (int j = 0; j < ARRAY_SIZE(bg); j++) {
@@ -40,6 +41,7 @@ static void *play_bg(void *args) {
     }
     snd_pcm_writei(playback, bg, ARRAY_SIZE(bg));
   }
+  snd_pcm_drain(playback);
   return NULL;
 }
 
@@ -97,6 +99,7 @@ int main(int argc, char **argv) {
   }
 
   if (record) {
+    snd_pcm_prepare(capture);
     int frames = snd_pcm_readi(capture, fg, ARRAY_SIZE(fg));
     if (frames < 0) {
       fprintf(stderr, "Capture error: %s\n", snd_strerror(frames));
@@ -116,6 +119,7 @@ int main(int argc, char **argv) {
     pthread_join(bg_thread, NULL);
   }
 
+  snd_pcm_prepare(playback);
   int frames = snd_pcm_writei(playback, fg, ARRAY_SIZE(fg));
   if (frames < 0) {
     fprintf(stderr, "Playback error: %s\n", snd_strerror(frames));
