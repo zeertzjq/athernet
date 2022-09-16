@@ -1,5 +1,3 @@
-// Record 10 seconds of sound (with optional background sound) and play it.
-//
 // To compile:
 //   gcc project0.c -lasound -lm -oproject0
 //
