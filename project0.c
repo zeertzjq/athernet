@@ -36,7 +36,6 @@
 static const char *device = "default";
 static int16_t fg[RATE * 10];
 static int16_t bg[RATE / 5];
-static snd_pcm_t *capture;
 static snd_pcm_t *playback;
 static int volume = 2000;
 
@@ -75,12 +74,6 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  if (record) {
-    E(snd_pcm_open, &capture, device, SND_PCM_STREAM_CAPTURE, 0);
-    E(snd_pcm_set_params, capture, SND_PCM_FORMAT_S16_LE,
-      SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
-  }
-
   E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
   E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
     SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
@@ -91,6 +84,10 @@ int main(int argc, char **argv) {
   }
 
   if (record) {
+    snd_pcm_t *capture;
+    E(snd_pcm_open, &capture, device, SND_PCM_STREAM_CAPTURE, 0);
+    E(snd_pcm_set_params, capture, SND_PCM_FORMAT_S16_LE,
+      SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
     E(snd_pcm_prepare, capture);
     E(snd_pcm_readi, capture, fg, ARRAY_SIZE(fg));
     E(snd_pcm_drain, capture);
