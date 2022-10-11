@@ -52,7 +52,7 @@ static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
   static int32_t buf_sum = 0;
   static int64_t max_product = 0;
-  static size_t preamble_pos = 0;
+  static size_t preamble_pos = 0; 
   while (*startp < end) {
     buf_sum -= buf[0];
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));

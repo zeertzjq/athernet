@@ -50,7 +50,7 @@ static void transmit_frame(bool bit) {
   }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) {                                         
   E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
   E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
     SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
