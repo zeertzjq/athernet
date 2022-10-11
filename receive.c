@@ -48,15 +48,15 @@ static void *capture_loop(void *args) {
   return NULL;
 }
 
-static bool find_preamble(size_t new_start, size_t new_end) {
+static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
   static int32_t buf_sum = 0;
   static int64_t max_product = 0;
   static size_t preamble_pos = 0;
-  while (new_start < new_end) {
+  while (*startp < end) {
     buf_sum -= buf[0];
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    buf_sum += (buf[PREAMBLE_LEN - 1] = capture_buf[new_start++]);
+    buf_sum += (buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
     int64_t product = 0;
     for (int i = 0; i < PREAMBLE_LEN; i++) {
       product += buf[i] + preamble[i];
@@ -66,6 +66,13 @@ static bool find_preamble(size_t new_start, size_t new_end) {
       preamble_pos = 0;
     } else {
       preamble_pos++;
+    }
+    if (preamble_pos == PREAMBLE_LEN) {
+      memset(buf, 0, sizeof(buf));
+      buf_sum = 0;
+      max_product = 0;
+      preamble_pos = 0;
+      return true;
     }
   }
   return false;
@@ -91,7 +98,7 @@ int main(int argc, char **argv) {
       continue;
     }
     if (!found_preamble) {
-      found_preamble = find_preamble(capture_read_pos, capture_read_end);
+      found_preamble = find_preamble(&capture_read_pos, capture_read_end);
       continue;
     }
   }
