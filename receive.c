@@ -12,6 +12,7 @@
 
 #define RATE 48000
 #define BIT_LEN 48
+#define FRAME_BITS 100
 #define PREAMBLE_LEN 480
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
@@ -27,11 +28,10 @@
 static const char *device = "default";
 static double carrier[RATE];
 static size_t carrier_pos = 0;
-static int16_t preamble[PREAMBLE_LEN];
+static double preamble[PREAMBLE_LEN];
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static sig_atomic_t capture_pos = 0;
 static sig_atomic_t stopped = 0;
-static int volume = 2000;
 
 static void *capture_loop(void *args) {
   snd_pcm_t *capture;
@@ -48,23 +48,29 @@ static void *capture_loop(void *args) {
   return NULL;
 }
 
+static int64_t sqr(int64_t x) { return x * x; }
+
 static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
-  static int32_t buf_sum = 0;
-  static int64_t max_product = 0;
+  static int64_t buf_sum = 0;
+  static double max_product = 0;
   static size_t preamble_pos = 0;
-  while (*startp < end) {
-    buf_sum -= buf[0];
+  while (*startp != end) {
+    buf_sum -= sqr(buf[0]);
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    buf_sum += (buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
-    int64_t product = 0;
-    for (int i = 0; i < PREAMBLE_LEN; i++) {
-      product += buf[i] + preamble[i];
+    buf_sum += sqr(buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
+    if (*startp == PREAMBLE_LEN * 2) {
+      *startp = 0;
     }
-    if (product > max_product && product > buf_sum / PREAMBLE_LEN * 2) {
+    double product = 0;
+    for (int i = 0; i < PREAMBLE_LEN; i++) {
+      product += pow(buf[i] * preamble[i], 2);
+    }
+    product /= buf_sum;
+    if (product > max_product) {
       max_product = product;
       preamble_pos = 0;
-    } else {
+    } else if (max_product > 0.8) {
       preamble_pos++;
     }
     if (preamble_pos == PREAMBLE_LEN) {
@@ -81,16 +87,17 @@ static bool find_preamble(size_t *startp, size_t end) {
 int main(int argc, char **argv) {
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
-    carrier[i] = sin(2 * M_PI * 10000 * t);
+    carrier[i] = cos(2 * M_PI * 10000 * t);
   }
   for (int i = 0; i < PREAMBLE_LEN; i++) {
     double t = i / (double)RATE;
-    preamble[i] = sin(2 * M_PI * 12000 * t) * volume;
+    preamble[i] = cos(2 * M_PI * 12000 * t);
   }
   pthread_t capture_thread;
   pthread_create(&capture_thread, NULL, capture_loop, NULL);
   size_t capture_read_pos = 0;
   bool found_preamble = false;
+  size_t frame_pos = 0;
   for (;;) {
     size_t capture_read_end = capture_pos;
     if (capture_read_pos == capture_read_end) {
@@ -101,6 +108,11 @@ int main(int argc, char **argv) {
       found_preamble = find_preamble(&capture_read_pos, capture_read_end);
       continue;
     }
+    if (frame_pos == FRAME_BITS) {
+      found_preamble = false;
+      frame_pos = 0;
+    }
   }
+  pthread_join(capture_thread, NULL);
   return EXIT_SUCCESS;
 }

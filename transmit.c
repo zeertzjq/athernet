@@ -10,6 +10,7 @@
 
 #define RATE 48000
 #define BIT_LEN 48
+#define FRAME_BITS 100
 #define PREAMBLE_LEN 480
 #define ZERO_LEN 480
 #define LEN(s) (sizeof(s) - 1)
@@ -45,7 +46,7 @@ static void transmit_bit(bool bit) {
 
 static void transmit_frame(bool bit) {
   E(snd_pcm_writei, playback, preamble, PREAMBLE_LEN);
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < FRAME_BITS; i++) {
     transmit_bit(bit);
   }
 }
@@ -56,11 +57,11 @@ int main(int argc, char **argv) {
     SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
-    carrier[i] = sin(2 * M_PI * 10000 * t);
+    carrier[i] = cos(2 * M_PI * 10000 * t);
   }
   for (int i = 0; i < PREAMBLE_LEN; i++) {
     double t = i / (double)RATE;
-    preamble[i] = sin(2 * M_PI * 12000 * t) * volume;
+    preamble[i] = cos(2 * M_PI * 12000 * t) * volume;
   }
   for (int i = 0; i < 100; i++) {
     E(snd_pcm_writei, playback, zero_buf, ZERO_LEN);
