@@ -44,10 +44,12 @@ static void transmit_bit(bool bit) {
   }
 }
 
-static void transmit_frame(bool bit) {
+static void transmit_frame() {
   E(snd_pcm_writei, playback, preamble, PREAMBLE_LEN);
   for (int i = 0; i < FRAME_BITS; i++) {
-    transmit_bit(bit);
+    char c;
+    scanf(" %c", &c);
+    transmit_bit(c > '0');
   }
 }
 
@@ -65,7 +67,7 @@ int main(int argc, char **argv) {
   }
   for (int i = 0; i < 100; i++) {
     E(snd_pcm_writei, playback, zero_buf, ZERO_LEN);
-    transmit_frame(1);
+    transmit_frame();
   }
   E(snd_pcm_drain, playback);
   E(snd_pcm_close, playback);
