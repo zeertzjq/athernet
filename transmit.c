@@ -31,7 +31,7 @@ static int16_t bit_buf[BIT_LEN];
 static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
 static snd_pcm_t *playback;
-static int volume = 2000;
+static int volume = 20000;
 
 static void transmit_bit(bool bit) {
   for (int i = 0; i < BIT_LEN; i++) {

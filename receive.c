@@ -70,7 +70,7 @@ static bool find_preamble(size_t *startp, size_t end) {
     if (product > max_product) {
       max_product = product;
       preamble_pos = 0;
-    } else if (max_product > 0.8) {
+    } else if (max_product > 0.9) {
       preamble_pos++;
     }
     if (preamble_pos == PREAMBLE_LEN) {
@@ -82,6 +82,24 @@ static bool find_preamble(size_t *startp, size_t end) {
     }
   }
   return false;
+}
+
+static size_t remaining(size_t start, size_t end) {
+  return end - start + (start < end ? 0 : PREAMBLE_LEN * 2);
+}
+
+static bool decode_bit(size_t *startp, size_t end) {
+  double product = 0;
+  for (int i = 0; i < BIT_LEN; i++) {
+    product += capture_buf[(*startp)++] * carrier[carrier_pos++];
+    if (*startp == PREAMBLE_LEN * 2) {
+      *startp = 0;
+    }
+    if (carrier_pos == RATE) {
+      carrier_pos = 0;
+    }
+  }
+  return product > 0;
 }
 
 int main(int argc, char **argv) {
@@ -108,9 +126,14 @@ int main(int argc, char **argv) {
       found_preamble = find_preamble(&capture_read_pos, capture_read_end);
       continue;
     }
-    if (frame_pos == FRAME_BITS) {
-      found_preamble = false;
-      frame_pos = 0;
+    while (remaining(capture_read_pos, capture_read_end) >= 48) {
+      printf("%d", decode_bit(&capture_read_pos, capture_read_end));
+      if (++frame_pos == FRAME_BITS) {
+        found_preamble = false;
+        frame_pos = 0;
+        putchar('\n');
+        break;
+      }
     }
   }
   pthread_join(capture_thread, NULL);
