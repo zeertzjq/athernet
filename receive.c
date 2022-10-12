@@ -35,17 +35,29 @@ static sig_atomic_t capture_pos = 0;
 static sig_atomic_t stopped = 0;
 
 static void capture_start(void) {
+#if 0
+  return;
+#endif
   E(snd_pcm_open, &capture, device, SND_PCM_STREAM_CAPTURE, 0);
   E(snd_pcm_set_params, capture, SND_PCM_FORMAT_S16_LE,
     SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
 }
 
 static void capture_stop(void) {
+#if 0
+  return;
+#endif
   E(snd_pcm_drain, capture);
   E(snd_pcm_close, capture);
 }
 
 static void capture_read(int16_t *buf, size_t len) {
+#if 0
+  for (int i = 0; i < len; i++) {
+    scanf("%hd", &buf[i]);
+  }
+  return;
+#endif
   E(snd_pcm_readi, capture, buf, len);
 }
 

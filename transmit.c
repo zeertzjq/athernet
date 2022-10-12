@@ -34,17 +34,29 @@ static snd_pcm_t *playback;
 static int volume = 20000;
 
 static void playback_start(void) {
+#if 0
+  return;
+#endif
   E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
   E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
     SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
 }
 
 static void playback_stop(void) {
+#if 0
+  return;
+#endif
   E(snd_pcm_drain, playback);
   E(snd_pcm_close, playback);
 }
 
 static void playback_write(int16_t *buf, size_t len) {
+#if 0
+  for (int i = 0; i < len; i++) {
+    printf("%hd ", buf[i]);
+  }
+  return;
+#endif
   E(snd_pcm_writei, playback, buf, len);
 }
 
