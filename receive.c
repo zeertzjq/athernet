@@ -1,4 +1,3 @@
-#include <alsa/asoundlib.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
@@ -14,57 +13,19 @@
 #include "conf.h"
 #include "crc-lib-c/crcLib.h"
 
-#define RATE 48000
-#define BIT_LEN 48
-#define FRAME_BITS 100
-#define PREAMBLE_LEN 480
+#include "backend.h"
+#include "constants.h"
+
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
-
-
-#define E(fn, pcm, ...)                                                        \
-  do {                                                                         \
-    int err_ = fn(pcm, ##__VA_ARGS__);                                         \
-    if (err_ < 0) {                                                            \
-      fprintf(stderr, "%s %s error: %s\n", #fn, #pcm, snd_strerror(err_));     \
-    }                                                                          \
-  } while (0)
 
 static const char *device = "default";
 static double carrier[RATE];
 static size_t carrier_pos = 0;
 static double preamble[PREAMBLE_LEN];
-static snd_pcm_t *capture;
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static sig_atomic_t capture_pos = 0;
 static sig_atomic_t stopped = 0;
-
-static void capture_start(void) {
-#if 0
-  return;
-#endif
-  E(snd_pcm_open, &capture, device, SND_PCM_STREAM_CAPTURE, 0);
-  E(snd_pcm_set_params, capture, SND_PCM_FORMAT_S16_LE,
-    SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
-}
-
-static void capture_stop(void) {
-#if 0
-  return;
-#endif
-  E(snd_pcm_drain, capture);
-  E(snd_pcm_close, capture);
-}
-
-static void capture_read(int16_t *buf, size_t len) {
-#if 0
-  for (int i = 0; i < len; i++) {
-    scanf("%hd", &buf[i]);
-  }
-  return;
-#endif
-  E(snd_pcm_readi, capture, buf, len);
-}
 
 static void *capture_loop(void *args) {
   capture_start();
