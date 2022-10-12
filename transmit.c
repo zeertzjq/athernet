@@ -33,11 +33,26 @@ static int16_t zero_buf[ZERO_LEN];
 static snd_pcm_t *playback;
 static int volume = 20000;
 
+static void playback_start(void) {
+  E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
+  E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
+    SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
+}
+
+static void playback_stop(void) {
+  E(snd_pcm_drain, playback);
+  E(snd_pcm_close, playback);
+}
+
+static void playback_write(int16_t *buf, size_t len) {
+  E(snd_pcm_writei, playback, buf, len);
+}
+
 static void transmit_bit(bool bit) {
   for (int i = 0; i < BIT_LEN; i++) {
     bit_buf[i] = carrier[carrier_pos + i] * (bit ? 1 : -1) * volume;
   }
-  E(snd_pcm_writei, playback, bit_buf, BIT_LEN);
+  playback_write(bit_buf, BIT_LEN);
   carrier_pos += BIT_LEN;
   if (carrier_pos == RATE) {
     carrier_pos = 0;
@@ -45,7 +60,7 @@ static void transmit_bit(bool bit) {
 }
 
 static void transmit_frame() {
-  E(snd_pcm_writei, playback, preamble, PREAMBLE_LEN);
+  playback_write(preamble, PREAMBLE_LEN);
   for (int i = 0; i < FRAME_BITS; i++) {
     char c;
     scanf(" %c", &c);
@@ -54,9 +69,7 @@ static void transmit_frame() {
 }
 
 int main(int argc, char **argv) {
-  E(snd_pcm_open, &playback, device, SND_PCM_STREAM_PLAYBACK, 0);
-  E(snd_pcm_set_params, playback, SND_PCM_FORMAT_S16_LE,
-    SND_PCM_ACCESS_RW_INTERLEAVED, 1, RATE, 1, 15000);
+  playback_start();
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
     carrier[i] = cos(2 * M_PI * 10000 * t);
@@ -66,10 +79,9 @@ int main(int argc, char **argv) {
     preamble[i] = cos(2 * M_PI * 12000 * t) * volume;
   }
   for (int i = 0; i < 100; i++) {
-    E(snd_pcm_writei, playback, zero_buf, ZERO_LEN);
+    playback_write(zero_buf, ZERO_LEN);
     transmit_frame();
   }
-  E(snd_pcm_drain, playback);
-  E(snd_pcm_close, playback);
+  playback_stop();
   return EXIT_SUCCESS;
 }
