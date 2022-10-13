@@ -54,7 +54,7 @@ static bool find_preamble(size_t *startp, size_t end) {
     }
     double product = 0;
     for (int i = 0; i < PREAMBLE_LEN; i++) {
-      product += pow(buf[i] * preamble[i], 2);
+      product += buf[i] * preamble[i];
     }
     product /= buf_sum;
     if (product > max_product) {
