@@ -128,20 +128,27 @@ int main(int argc, char **argv) {
     double t = i / (double)RATE;
     carrier[i] = cos(2 * M_PI * 10000 * t);
   }
-  for (int i = 0; i < PREAMBLE_LEN; i++) {
-    double t = i / (double)RATE;
-    preamble[i] = cos(2 * M_PI * 12000 * t);
+
+  for (int i = 0; i < PREAMBLE_LEN / 2; i++) {
+    double tmp = i / 24. + i * i / 2880.;
+    preamble[i] = cos(2 * M_PI * tmp);
+    preamble[PREAMBLE_LEN - i] = cos(2 * M_PI * (60 - tmp));
   }
+
   pthread_t capture_thread;
   pthread_create(&capture_thread, NULL, capture_loop, NULL);
+
   size_t capture_read_pos = 0;
-
-
   bool found_preamble = false;
   size_t frame_pos = 0;
-  int correct_frame=0;
+  size_t num_frames = 0;
+  int correct_frame = 0;
 
   for (;;) {
+    if (num_frames == 100) {
+      stopped = 1;
+      break;
+    }
     size_t capture_read_end = capture_pos;
     if (capture_read_pos == capture_read_end) {
       usleep(100);
@@ -157,10 +164,12 @@ int main(int argc, char **argv) {
         found_preamble = false;
         frame_pos = 0;
         putchar('\n');
+        num_frames++;
         break;
       }
     }
   }
+
   pthread_join(capture_thread, NULL);
   return EXIT_SUCCESS;
 }

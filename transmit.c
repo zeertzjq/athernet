@@ -30,7 +30,6 @@ static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
 static int volume = 20000;
 
-
 int* generate_crc_code(int* buf){
   int behind[8];
   uint8_t crc = crc8_maxim(buf, 100)
@@ -39,7 +38,6 @@ int* generate_crc_code(int* buf){
       }
     return behind;
 }
-
 
 static void transmit_bit(bool bit) {
   for (int i = 0; i < BIT_LEN; i++) {
@@ -62,17 +60,18 @@ static void transmit_frame() {
 }
 
 int main(int argc, char **argv) {
-  playback_start();
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
     carrier[i] = cos(2 * M_PI * 10000 * t);
   }
 
-  for (int i = 0; i < PREAMBLE_LEN; i++) {
-    double t = i / (double)RATE;
-    preamble[i] = cos(2 * M_PI * 12000 * t) * volume;
+  for (int i = 0; i < PREAMBLE_LEN / 2; i++) {
+    double tmp = i / 24. + i * i / 2880.;
+    preamble[i] = cos(2 * M_PI * tmp) * volume;
+    preamble[PREAMBLE_LEN - i] = cos(2 * M_PI * (60 - tmp)) * volume;
   }
-  
+
+  playback_start();
   for (int i = 0; i < 100; i++) {
     playback_write(zero_buf, ZERO_LEN);
     transmit_frame();
