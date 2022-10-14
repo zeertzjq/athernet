@@ -138,8 +138,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
     double tmp = i / 24. + i * i / 2880.;
-    preamble[i] = cos(2 * M_PI * tmp);
-    preamble[PREAMBLE_LEN - 1 - i] = cos(2 * M_PI * (60 - tmp));
+    preamble[PREAMBLE_LEN - 1 - i] = preamble[i] = cos(2 * M_PI * tmp);
   }
 
   pthread_t capture_thread;
