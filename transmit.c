@@ -16,10 +16,9 @@
 
 static double carrier[RATE];
 static size_t carrier_pos = 0;
-static int16_t bit_buf[BIT_LEN];
 static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
-static int volume = 20000;
+static int volume = 8192;
 
 int* generate_crc_code(int* buf){
   int behind[8];
@@ -31,6 +30,7 @@ int* generate_crc_code(int* buf){
 }
 
 static void transmit_bit(bool bit) {
+  int16_t bit_buf[BIT_LEN];
   for (int i = 0; i < BIT_LEN; i++) {
     bit_buf[i] = carrier[carrier_pos + i] * (bit ? 1 : -1) * volume;
   }
@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
-    carrier[i] = cos(2 * M_PI * 10000 * t);
+    carrier[i] = sin(2 * M_PI * 10000 * t);
   }
 
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {

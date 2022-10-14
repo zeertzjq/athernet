@@ -37,7 +37,7 @@ static const char *device = "default";
 static int16_t fg[RATE * 10];
 static int16_t bg[RATE / 5];
 static snd_pcm_t *playback;
-static int volume = 2000;
+static int volume = 8192;
 
 static void *play_bg(void *args) {
   E(snd_pcm_prepare, playback);

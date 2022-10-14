@@ -50,9 +50,9 @@ static bool find_preamble(size_t *startp, size_t end) {
     buf_abs_sum -= abs(buf[0]);
     buf_sqr_sum -= sqr(buf[0]);
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    int16_t sample = buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++];
-    buf_abs_sum += abs(sample);
-    buf_sqr_sum += sqr(sample);
+    buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++];
+    buf_abs_sum += abs(buf[PREAMBLE_LEN - 1]);
+    buf_sqr_sum += sqr(buf[PREAMBLE_LEN - 1]);
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
@@ -144,7 +144,7 @@ static bool decode_bit(size_t *startp) {
 int main(int argc, char **argv) {
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
-    carrier[i] = cos(2 * M_PI * 10000 * t);
+    carrier[i] = sin(2 * M_PI * 10000 * t);
   }
 
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
