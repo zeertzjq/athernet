@@ -46,9 +46,9 @@ static bool find_preamble(size_t *startp, size_t end) {
   static double max_product_half = 0;
   static size_t preamble_pos = 0;
   while (*startp != end) {
-    buf_sum -= sqr(buf[0]);
+    buf_sum -= abs(buf[0]);
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    buf_sum += sqr(buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
+    buf_sum += abs(buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
@@ -57,23 +57,30 @@ static bool find_preamble(size_t *startp, size_t end) {
     for (int i = 0; i < PREAMBLE_LEN; i++) {
       product_full += preamble[i] * buf[i];
     }
+    product_full /= buf_sum;
+    if (product_full > max_product_full) {
+      max_product_full = product_full;
+    }
     for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
       product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
     }
+    product_half /= buf_sum / 2.;
     if (product_half > max_product_half) {
       max_product_half = product_half;
-      max_product_full = product_full;
       preamble_pos = 0;
-    } else if (max_product_half > 1) {
+    } else {
       preamble_pos++;
     }
     if (preamble_pos == HALF_PREAMBLE_LEN) {
+      bool found = max_product_half > 0 & product_full >= max_product_full;
       memset(buf, 0, sizeof(buf));
       buf_sum = 0;
       max_product_full = 0;
       max_product_half = 0;
       preamble_pos = 0;
-      return true;
+      if (found) {
+        return true;
+      }
     }
   }
   return false;
