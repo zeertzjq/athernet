@@ -62,21 +62,21 @@ static bool find_preamble(size_t *startp, size_t end) {
       product_full += preamble[i] * buf[i];
     }
     product_full /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN;
-    if (product_full >= max_product_full) {
+    if (product_full > 0.5 && product_full > max_product_full) {
       max_product_full = product_full;
     }
     for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
       product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
     }
     product_half /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN / 2;
-    if (product_half > 0.5 && product_half >= max_product_half) {
+    if (product_half > 0.5 && product_half > max_product_half) {
       max_product_half = product_half;
       preamble_pos = 0;
     } else if (preamble_pos >= 0) {
       preamble_pos++;
     }
     if (preamble_pos == HALF_PREAMBLE_LEN) {
-      bool found = product_full > 0.5 && product_full >= max_product_full;
+      bool found = product_full >= max_product_full;
       memset(buf, 0, sizeof(buf));
       buf_abs_sum = 0;
       buf_sqr_sum = 0;
