@@ -111,7 +111,7 @@ bool crc_check(int* buf){
 }
 
 static size_t remaining(size_t start, size_t end) {
-  return end - start + (start < end ? 0 : PREAMBLE_LEN * 2);
+  return end - start + (start <= end ? 0 : PREAMBLE_LEN * 2);
 }
 
 static bool decode_bit(size_t *startp) {
