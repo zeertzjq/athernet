@@ -41,14 +41,18 @@ static int64_t sqr(int64_t x) { return x * x; }
 
 static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
-  static int64_t buf_sum = 0;
+  static int64_t buf_abs_sum = 0;
+  static int64_t buf_sqr_sum = 0;
   static double max_product_full = 0;
   static double max_product_half = 0;
-  static size_t preamble_pos = 0;
+  static int preamble_pos = -1;
   while (*startp != end) {
-    buf_sum -= abs(buf[0]);
+    buf_abs_sum -= abs(buf[0]);
+    buf_sqr_sum -= sqr(buf[0]);
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    buf_sum += abs(buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++]);
+    int16_t sample = buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++];
+    buf_abs_sum += abs(sample);
+    buf_sqr_sum += sqr(sample);
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
@@ -57,27 +61,28 @@ static bool find_preamble(size_t *startp, size_t end) {
     for (int i = 0; i < PREAMBLE_LEN; i++) {
       product_full += preamble[i] * buf[i];
     }
-    product_full /= buf_sum;
-    if (product_full > max_product_full) {
+    product_full /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN;
+    if (product_full >= max_product_full) {
       max_product_full = product_full;
     }
     for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
       product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
     }
-    product_half /= buf_sum / 2.;
-    if (product_half > max_product_half) {
+    product_half /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN / 2;
+    if (product_half > 0.5 && product_half >= max_product_half) {
       max_product_half = product_half;
       preamble_pos = 0;
-    } else {
+    } else if (preamble_pos >= 0) {
       preamble_pos++;
     }
     if (preamble_pos == HALF_PREAMBLE_LEN) {
-      bool found = max_product_half > 0 & product_full >= max_product_full;
+      bool found = product_full > 0.5 && product_full >= max_product_full;
       memset(buf, 0, sizeof(buf));
-      buf_sum = 0;
+      buf_abs_sum = 0;
+      buf_sqr_sum = 0;
       max_product_full = 0;
       max_product_half = 0;
-      preamble_pos = 0;
+      preamble_pos = -1;
       if (found) {
         return true;
       }
