@@ -19,7 +19,6 @@
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 
-static const char *device = "default";
 static double carrier[RATE];
 static size_t carrier_pos = 0;
 static double preamble[PREAMBLE_LEN];

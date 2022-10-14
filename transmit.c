@@ -14,15 +14,6 @@
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 
-#define E(fn, pcm, ...)                                                        \
-  do {                                                                         \
-    int err_ = fn(pcm, ##__VA_ARGS__);                                         \
-    if (err_ < 0) {                                                            \
-      fprintf(stderr, "%s %s error: %s\n", #fn, #pcm, snd_strerror(err_));     \
-    }                                                                          \
-  } while (0)
-
-static const char *device = "default";
 static double carrier[RATE];
 static size_t carrier_pos = 0;
 static int16_t bit_buf[BIT_LEN];
