@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
     carrier[i] = cos(2 * M_PI * 10000 * t);
   }
 
-  for (int i = 0; i < PREAMBLE_LEN / 2; i++) {
+  for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
     double tmp = i / 24. + i * i / 2880.;
     preamble[i] = cos(2 * M_PI * tmp) * volume;
     preamble[PREAMBLE_LEN - 1 - i] = cos(2 * M_PI * (60 - tmp)) * volume;

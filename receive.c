@@ -43,7 +43,8 @@ static int64_t sqr(int64_t x) { return x * x; }
 static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
   static int64_t buf_sum = 0;
-  static double max_product = 0;
+  static double max_product_full = 0;
+  static double max_product_half = 0;
   static size_t preamble_pos = 0;
   while (*startp != end) {
     buf_sum -= sqr(buf[0]);
@@ -52,21 +53,26 @@ static bool find_preamble(size_t *startp, size_t end) {
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
-    double product = 0;
+    double product_full = 0;
+    double product_half = 0;
     for (int i = 0; i < PREAMBLE_LEN; i++) {
-      product += buf[i] * preamble[i];
+      product_full += preamble[i] * buf[i];
     }
-    product /= buf_sum;
-    if (product > max_product) {
-      max_product = product;
+    for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
+      product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
+    }
+    if (product_half > max_product_half) {
+      max_product_half = product_half;
+      max_product_full = product_full;
       preamble_pos = 0;
-    } else if (max_product > 0.9) {
+    } else if (max_product_half > 1) {
       preamble_pos++;
     }
-    if (preamble_pos == PREAMBLE_LEN) {
+    if (preamble_pos == HALF_PREAMBLE_LEN) {
       memset(buf, 0, sizeof(buf));
       buf_sum = 0;
-      max_product = 0;
+      max_product_full = 0;
+      max_product_half = 0;
       preamble_pos = 0;
       return true;
     }
@@ -109,16 +115,17 @@ static size_t remaining(size_t start, size_t end) {
   return end - start + (start < end ? 0 : PREAMBLE_LEN * 2);
 }
 
-static bool decode_bit(size_t *startp, size_t end) {
+static bool decode_bit(size_t *startp) {
   double product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
-    product += capture_buf[(*startp)++] * carrier[carrier_pos++];
+    product += capture_buf[(*startp)++] * carrier[carrier_pos + i];
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
-    if (carrier_pos == RATE) {
-      carrier_pos = 0;
-    }
+  }
+  carrier_pos += BIT_LEN;
+  if (carrier_pos == RATE) {
+    carrier_pos = 0;
   }
   return product > 0;
 }
@@ -129,7 +136,7 @@ int main(int argc, char **argv) {
     carrier[i] = cos(2 * M_PI * 10000 * t);
   }
 
-  for (int i = 0; i < PREAMBLE_LEN / 2; i++) {
+  for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
     double tmp = i / 24. + i * i / 2880.;
     preamble[i] = cos(2 * M_PI * tmp);
     preamble[PREAMBLE_LEN - 1 - i] = cos(2 * M_PI * (60 - tmp));
@@ -158,8 +165,8 @@ int main(int argc, char **argv) {
       found_preamble = find_preamble(&capture_read_pos, capture_read_end);
       continue;
     }
-    while (remaining(capture_read_pos, capture_read_end) >= 48) {
-      printf("%d", decode_bit(&capture_read_pos, capture_read_end));
+    while (remaining(capture_read_pos, capture_read_end) >= BIT_LEN) {
+      printf("%d", decode_bit(&capture_read_pos));
       if (++frame_pos == FRAME_BITS) {
         found_preamble = false;
         frame_pos = 0;
