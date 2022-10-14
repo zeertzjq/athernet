@@ -60,6 +60,15 @@ static void transmit_frame() {
 }
 
 int main(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
+      volume = atoi(argv[i] + LEN("--volume="));
+    } else {
+      fprintf(stderr, "Invalid argument: %s\n", argv[i]);
+      return EXIT_FAILURE;
+    }
+  }
+
   for (int i = 0; i < RATE; i++) {
     double t = i / (double)RATE;
     carrier[i] = cos(2 * M_PI * 10000 * t);
