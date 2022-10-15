@@ -18,7 +18,7 @@ static double carrier[RATE];
 static size_t carrier_pos = 0;
 static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
-static int volume = 8192;
+static int volume = 16384;
 
 int* generate_crc_code(int* buf){
   int behind[8];
