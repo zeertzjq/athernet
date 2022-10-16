@@ -18,7 +18,6 @@ static double preamble[PREAMBLE_LEN];
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static sig_atomic_t capture_pos = 0;
 static sig_atomic_t stopped = 0;
-static int max_frames = 100;
 
 static void *capture_loop(void *args) {
   capture_start();
@@ -104,9 +103,34 @@ static bool decode_bit(size_t *startp) {
   return product > 0;
 }
 
-static bool frame_add_bit(bool bit, bool *bits) {
+static bool receive_frame_plain(bool new_bit, bool *bits) {
   static size_t frame_pos = 0;
-  bits[frame_pos++] = bit;
+  bits[frame_pos++] = new_bit;
+  if (frame_pos == FRAME_BITS) {
+    frame_pos = 0;
+    return true;
+  }
+  return false;
+}
+
+static bool receive_frame_hamming(bool new_bit, bool *bits) {
+  static size_t frame_pos = 0;
+  static size_t src_pos = 0;
+  static bool src_bits[8];
+  src_bits[++src_pos] = new_bit;
+  if (src_pos < 7) {
+    return false;
+  }
+  src_pos = 0;
+  size_t wrong_pos = 0;
+  wrong_pos += (src_bits[1] ^ src_bits[3] ^ src_bits[5] ^ src_bits[7]) * 1;
+  wrong_pos += (src_bits[2] ^ src_bits[3] ^ src_bits[6] ^ src_bits[7]) * 2;
+  wrong_pos += (src_bits[4] ^ src_bits[5] ^ src_bits[6] ^ src_bits[7]) * 4;
+  src_bits[wrong_pos] ^= 1;
+  bits[frame_pos++] = src_bits[3];
+  bits[frame_pos++] = src_bits[5];
+  bits[frame_pos++] = src_bits[6];
+  bits[frame_pos++] = src_bits[7];
   if (frame_pos == FRAME_BITS) {
     frame_pos = 0;
     return true;
@@ -115,8 +139,13 @@ static bool frame_add_bit(bool bit, bool *bits) {
 }
 
 int main(int argc, char **argv) {
+  int max_frames = 100;
+  bool (*receive_frame)(bool, bool *) = receive_frame_plain;
+
   for (int i = 1; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
+    if (strcmp(argv[i], "--hamming") == 0) {
+      receive_frame = receive_frame_hamming;
+    } else if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
     } else {
       fprintf(stderr, "Invalid argument: %s\n", argv[i]);
@@ -150,7 +179,7 @@ int main(int argc, char **argv) {
       continue;
     }
     while (remaining(capture_read_pos, capture_read_end) >= BIT_LEN) {
-      if (frame_add_bit(decode_bit(&capture_read_pos), bits)) {
+      if (receive_frame(decode_bit(&capture_read_pos), bits)) {
         found_preamble = false;
         num_frames++;
         for (int i = 0; i < FRAME_BITS; i++) {

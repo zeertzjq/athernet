@@ -16,7 +16,6 @@ static double carrier[RATE];
 static size_t carrier_pos = 0;
 static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
-static int max_frames = 100;
 static int volume = 16384;
 
 static void transmit_bit(bool bit) {
@@ -31,16 +30,38 @@ static void transmit_bit(bool bit) {
   }
 }
 
-static void transmit_frame(bool *bits) {
+static void transmit_frame_plain(bool *bits) {
   playback_write(preamble, PREAMBLE_LEN);
   for (int i = 0; i < FRAME_BITS; i++) {
     transmit_bit(bits[i]);
   }
 }
 
+static void transmit_frame_hamming(bool *bits) {
+  playback_write(preamble, PREAMBLE_LEN);
+  for (int i = 0; i < FRAME_BITS; i += 4) {
+    bool out_bits[8] = {0,
+                        bits[i] ^ bits[i + 1] ^ bits[i + 3],
+                        bits[i] ^ bits[i + 2] ^ bits[i + 3],
+                        bits[i],
+                        bits[i + 1] ^ bits[i + 2] ^ bits[i + 3],
+                        bits[i + 1],
+                        bits[i + 2],
+                        bits[i + 3]};
+    for (int j = 1; j <= 7; j++) {
+      transmit_bit(out_bits[j]);
+    }
+  }
+}
+
 int main(int argc, char **argv) {
+  int max_frames = 100;
+  void (*transmit_frame)(bool *) = transmit_frame_plain;
+
   for (int i = 1; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
+    if (strcmp(argv[i], "--hamming") == 0) {
+      transmit_frame = transmit_frame_hamming;
+    } else if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
     } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
