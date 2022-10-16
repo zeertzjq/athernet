@@ -11,11 +11,11 @@
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 
-#define GET_CARRIER(buf)                                                       \
+#define GET_CARRIER(buf, freq)                                                 \
   do {                                                                         \
     for (int i = 0; i < RATE; i++) {                                           \
       double t = i / (double)RATE;                                             \
-      buf[i] = sin(2 * M_PI * 10000 * t);                                      \
+      buf[i] = sin(2 * M_PI * freq * t);                                       \
     }                                                                          \
   } while (0)
 

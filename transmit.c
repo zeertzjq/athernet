@@ -58,14 +58,18 @@ static void transmit_frame_hamming(bool *bits) {
 }
 
 int main(int argc, char **argv) {
-  int max_frames = 10000 / FRAME_BITS;
   void (*transmit_frame)(bool *) = transmit_frame_plain;
+  int max_frames = 10000 / FRAME_BITS;
+  size_t frame_bits = FRAME_BITS;
+  int carrier_freq = 10000;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--hamming") == 0) {
       transmit_frame = transmit_frame_hamming;
     } else if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
+    } else if (strncmp(argv[i], S_LEN("--carrier=")) == 0) {
+      carrier_freq = atoi(argv[i] + LEN("--carrier="));
     } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else {
@@ -73,15 +77,12 @@ int main(int argc, char **argv) {
       return EXIT_FAILURE;
     }
   }
-
-  size_t frame_bits = FRAME_BITS;
-
   if (transmit_frame == transmit_frame_hamming) {
     max_frames *= 2;
     frame_bits /= 2;
   }
 
-  GET_CARRIER(carrier);
+  GET_CARRIER(carrier, carrier_freq);
   GET_PREAMBLE(preamble, volume);
 
   playback_start();
