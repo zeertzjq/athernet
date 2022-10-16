@@ -16,9 +16,6 @@
 #include "backend.h"
 #include "common.h"
 
-#define LEN(s) (sizeof(s) - 1)
-#define S_LEN(s) (s), LEN(s)
-
 static double carrier[RATE];
 static size_t carrier_pos = 0;
 static double preamble[PREAMBLE_LEN];
@@ -181,5 +178,6 @@ int main(int argc, char **argv) {
   }
 
   pthread_join(capture_thread, NULL);
+
   return EXIT_SUCCESS;
 }

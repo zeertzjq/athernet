@@ -8,6 +8,8 @@
 #define FRAME_BITS 100
 #define PREAMBLE_LEN 480
 #define HALF_PREAMBLE_LEN 240
+#define LEN(s) (sizeof(s) - 1)
+#define S_LEN(s) (s), LEN(s)
 
 #define GET_CARRIER(buf)                                                       \
   do {                                                                         \

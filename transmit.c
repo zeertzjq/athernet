@@ -11,8 +11,6 @@
 #include "common.h"
 
 #define ZERO_LEN 480
-#define LEN(s) (sizeof(s) - 1)
-#define S_LEN(s) (s), LEN(s)
 
 static double carrier[RATE];
 static size_t carrier_pos = 0;
@@ -41,7 +39,7 @@ static void transmit_bit(bool bit) {
   }
 }
 
-static void transmit_frame() {
+static void transmit_frame(void) {
   playback_write(preamble, PREAMBLE_LEN);
   for (int i = 0; i < FRAME_BITS; i++) {
     char c;
@@ -69,5 +67,6 @@ int main(int argc, char **argv) {
     transmit_frame();
   }
   playback_stop();
+
   return EXIT_SUCCESS;
 }

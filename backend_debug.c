@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#include "constants.h"
+#include "common.h"
 
 void capture_start(void) {}
 
