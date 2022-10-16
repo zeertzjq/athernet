@@ -39,7 +39,7 @@ static void transmit_frame_plain(bool *bits) {
 
 static void transmit_frame_hamming(bool *bits) {
   playback_write(preamble, PREAMBLE_LEN);
-  for (int i = 0; i < FRAME_BITS; i += 4) {
+  for (int i = 0; i < FRAME_BITS / 2; i += 4) {
     bool out_bits[8] = {0,
                         bits[i] ^ bits[i + 1] ^ bits[i + 3],
                         bits[i] ^ bits[i + 2] ^ bits[i + 3],
@@ -49,13 +49,16 @@ static void transmit_frame_hamming(bool *bits) {
                         bits[i + 2],
                         bits[i + 3]};
     for (int j = 1; j <= 7; j++) {
+      out_bits[0] ^= out_bits[j];
+    }
+    for (int j = 0; j <= 7; j++) {
       transmit_bit(out_bits[j]);
     }
   }
 }
 
 int main(int argc, char **argv) {
-  int max_frames = 100;
+  int max_frames = 10000 / FRAME_BITS;
   void (*transmit_frame)(bool *) = transmit_frame_plain;
 
   for (int i = 1; i < argc; i++) {
@@ -71,13 +74,20 @@ int main(int argc, char **argv) {
     }
   }
 
+  size_t frame_bits = FRAME_BITS;
+
+  if (transmit_frame == transmit_frame_hamming) {
+    max_frames *= 2;
+    frame_bits /= 2;
+  }
+
   GET_CARRIER(carrier);
   GET_PREAMBLE(preamble, volume);
 
   playback_start();
   for (int i = 0; i < max_frames; i++) {
     bool bits[FRAME_BITS];
-    for (int i = 0; i < FRAME_BITS; i++) {
+    for (int i = 0; i < frame_bits; i++) {
       char c;
       scanf(" %c", &c);
       bits[i] = c > '0';

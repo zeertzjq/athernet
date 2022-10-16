@@ -117,21 +117,26 @@ static bool receive_frame_hamming(bool new_bit, bool *bits) {
   static size_t frame_pos = 0;
   static size_t src_pos = 0;
   static bool src_bits[8];
-  src_bits[++src_pos] = new_bit;
-  if (src_pos < 7) {
+  src_bits[src_pos++] = new_bit;
+  if (src_pos <= 7) {
     return false;
   }
   src_pos = 0;
-  size_t wrong_pos = 0;
-  wrong_pos += (src_bits[1] ^ src_bits[3] ^ src_bits[5] ^ src_bits[7]) * 1;
-  wrong_pos += (src_bits[2] ^ src_bits[3] ^ src_bits[6] ^ src_bits[7]) * 2;
-  wrong_pos += (src_bits[4] ^ src_bits[5] ^ src_bits[6] ^ src_bits[7]) * 4;
-  src_bits[wrong_pos] ^= 1;
+  for (int j = 1; j <= 7; j++) {
+    src_bits[0] ^= src_bits[j];
+  }
+  if (src_bits[0]) {
+    size_t wrong_pos = 0;
+    wrong_pos += (src_bits[1] ^ src_bits[3] ^ src_bits[5] ^ src_bits[7]) * 1;
+    wrong_pos += (src_bits[2] ^ src_bits[3] ^ src_bits[6] ^ src_bits[7]) * 2;
+    wrong_pos += (src_bits[4] ^ src_bits[5] ^ src_bits[6] ^ src_bits[7]) * 4;
+    src_bits[wrong_pos] ^= 1;
+  }
   bits[frame_pos++] = src_bits[3];
   bits[frame_pos++] = src_bits[5];
   bits[frame_pos++] = src_bits[6];
   bits[frame_pos++] = src_bits[7];
-  if (frame_pos == FRAME_BITS) {
+  if (frame_pos == FRAME_BITS / 2) {
     frame_pos = 0;
     return true;
   }
@@ -139,7 +144,7 @@ static bool receive_frame_hamming(bool new_bit, bool *bits) {
 }
 
 int main(int argc, char **argv) {
-  int max_frames = 100;
+  int max_frames = 10000 / FRAME_BITS;
   bool (*receive_frame)(bool, bool *) = receive_frame_plain;
 
   for (int i = 1; i < argc; i++) {
@@ -151,6 +156,13 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Invalid argument: %s\n", argv[i]);
       return EXIT_FAILURE;
     }
+  }
+
+  size_t frame_bits = FRAME_BITS;
+
+  if (receive_frame == receive_frame_hamming) {
+    max_frames *= 2;
+    frame_bits /= 2;
   }
 
   GET_CARRIER(carrier);
@@ -182,7 +194,7 @@ int main(int argc, char **argv) {
       if (receive_frame(decode_bit(&capture_read_pos), bits)) {
         found_preamble = false;
         num_frames++;
-        for (int i = 0; i < FRAME_BITS; i++) {
+        for (int i = 0; i < frame_bits; i++) {
           printf("%d", bits[i]);
         }
         if (isatty(STDOUT_FILENO)) {
