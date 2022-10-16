@@ -1,9 +1,0 @@
-{
-    "files.associations": {
-        "*.wpy": "vue",
-        "cmath": "c",
-        "stdint.h": "c",
-        "xlocale": "c",
-        "xstring": "c"
-    }
-}
