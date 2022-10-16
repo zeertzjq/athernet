@@ -144,7 +144,9 @@ int main(int argc, char **argv) {
       if (++frame_pos == FRAME_BITS) {
         found_preamble = false;
         frame_pos = 0;
-        putchar('\n');
+        if (isatty(1)) {
+          putchar('\n');
+        }
         num_frames++;
         break;
       }
