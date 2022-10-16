@@ -1,5 +1,5 @@
 // To compile:
-//   gcc project0.c -lasound -lm -oproject0
+//   gcc project0.c -lasound -lm -pthread -oproject0
 //
 // To record sound and replay it:
 //   ./project0 --record
