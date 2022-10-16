@@ -9,10 +9,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "util.c"
-#include "conf.h"
-#include "crc-lib-c/crcLib.h"
-
 #include "backend.h"
 #include "common.h"
 
@@ -87,37 +83,6 @@ static bool find_preamble(size_t *startp, size_t end) {
     }
   }
   return false;
-}
-
-void decode(size_t* buf, int* decode_power_bit){
-  if (sizeof(buf)/sizeof(size_t) == 44*108){
-    float decode_remove_carrier[44*108];
-    /*use smooth filter and decode*/
-    decode_remove_carrier = filter(m_dot2(44*108,get_carrier(), buf),10);
-    for (int j=0;j<108;++j){
-      decode_power_bit[j] = sum_list(decode_remove_carrier,10+j*44,30+j*44);
-    }
-    /*normalize the value of bit to 1 and 0*/
-    for(int i=0;i<length;++i){
-        if (decode_power_bit[i]>0)decode_power_bit[i]=1;
-        else decode_power_bit[i]=0;
-    }
-  }
-}
-
-bool crc_check(int* buf){
-  int pre[100]
-  int behind[8];
-  memcpy(pre, buf, 100);
-  uint8_t crc = crc8_maxim(pre, 100)
-  for(int i=7;i>=0;--i){
-      behind[7-i] = (crc>>i)&1;
-      if (buf[107-i]!=behind[7-i]){
-        return false;
-      }
-  }
-  return true;
-
 }
 
 static size_t remaining(size_t start, size_t end) {

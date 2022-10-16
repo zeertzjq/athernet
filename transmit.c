@@ -19,15 +19,6 @@ static int16_t zero_buf[ZERO_LEN];
 static int max_frames = 100;
 static int volume = 16384;
 
-int* generate_crc_code(int* buf){
-  int behind[8];
-  uint8_t crc = crc8_maxim(buf, 100)
-  for(int i=7;i>=0;--i){
-      behind[7-i] = (crc>>i)&1;
-      }
-    return behind;
-}
-
 static void transmit_bit(bool bit) {
   int16_t bit_buf[BIT_LEN];
   for (int i = 0; i < BIT_LEN; i++) {
