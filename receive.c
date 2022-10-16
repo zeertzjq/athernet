@@ -22,6 +22,7 @@ static double preamble[PREAMBLE_LEN];
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static sig_atomic_t capture_pos = 0;
 static sig_atomic_t stopped = 0;
+static int max_frames = 100;
 
 static void *capture_loop(void *args) {
   capture_start();
@@ -139,6 +140,15 @@ static bool decode_bit(size_t *startp) {
 }
 
 int main(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
+      max_frames = atoi(argv[i] + LEN("--frames="));
+    } else {
+      fprintf(stderr, "Invalid argument: %s\n", argv[i]);
+      return EXIT_FAILURE;
+    }
+  }
+
   GET_CARRIER(carrier);
   GET_PREAMBLE(preamble, 1);
 
@@ -148,11 +158,10 @@ int main(int argc, char **argv) {
   size_t capture_read_pos = 0;
   bool found_preamble = false;
   size_t frame_pos = 0;
-  size_t num_frames = 0;
-  int correct_frame = 0;
+  int num_frames = 0;
 
   for (;;) {
-    if (num_frames == 100) {
+    if (num_frames == max_frames) {
       stopped = 1;
       break;
     }

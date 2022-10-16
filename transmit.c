@@ -16,6 +16,7 @@ static double carrier[RATE];
 static size_t carrier_pos = 0;
 static int16_t preamble[PREAMBLE_LEN];
 static int16_t zero_buf[ZERO_LEN];
+static int max_frames = 100;
 static int volume = 16384;
 
 int* generate_crc_code(int* buf){
@@ -50,7 +51,9 @@ static void transmit_frame(void) {
 
 int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
+    if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
+      max_frames = atoi(argv[i] + LEN("--frames="));
+    } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else {
       fprintf(stderr, "Invalid argument: %s\n", argv[i]);
@@ -62,7 +65,7 @@ int main(int argc, char **argv) {
   GET_PREAMBLE(preamble, volume);
 
   playback_start();
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < max_frames; i++) {
     playback_write(zero_buf, ZERO_LEN);
     transmit_frame();
   }
