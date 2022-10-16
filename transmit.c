@@ -31,12 +31,10 @@ static void transmit_bit(bool bit) {
   }
 }
 
-static void transmit_frame(void) {
+static void transmit_frame(bool *bits) {
   playback_write(preamble, PREAMBLE_LEN);
   for (int i = 0; i < FRAME_BITS; i++) {
-    char c;
-    scanf(" %c", &c);
-    transmit_bit(c > '0');
+    transmit_bit(bits[i]);
   }
 }
 
@@ -57,8 +55,14 @@ int main(int argc, char **argv) {
 
   playback_start();
   for (int i = 0; i < max_frames; i++) {
+    bool bits[FRAME_BITS];
+    for (int i = 0; i < FRAME_BITS; i++) {
+      char c;
+      scanf(" %c", &c);
+      bits[i] = c > '0';
+    }
     playback_write(zero_buf, ZERO_LEN);
-    transmit_frame();
+    transmit_frame(bits);
   }
   playback_stop();
 

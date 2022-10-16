@@ -104,6 +104,16 @@ static bool decode_bit(size_t *startp) {
   return product > 0;
 }
 
+static bool frame_add_bit(bool bit, bool *bits) {
+  static size_t frame_pos = 0;
+  bits[frame_pos++] = bit;
+  if (frame_pos == FRAME_BITS) {
+    frame_pos = 0;
+    return true;
+  }
+  return false;
+}
+
 int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
@@ -122,8 +132,8 @@ int main(int argc, char **argv) {
 
   size_t capture_read_pos = 0;
   bool found_preamble = false;
-  size_t frame_pos = 0;
   int num_frames = 0;
+  bool bits[FRAME_BITS];
 
   for (;;) {
     if (num_frames == max_frames) {
@@ -140,14 +150,15 @@ int main(int argc, char **argv) {
       continue;
     }
     while (remaining(capture_read_pos, capture_read_end) >= BIT_LEN) {
-      printf("%d", decode_bit(&capture_read_pos));
-      if (++frame_pos == FRAME_BITS) {
+      if (frame_add_bit(decode_bit(&capture_read_pos), bits)) {
         found_preamble = false;
-        frame_pos = 0;
-        if (isatty(1)) {
+        num_frames++;
+        for (int i = 0; i < FRAME_BITS; i++) {
+          printf("%d", bits[i]);
+        }
+        if (isatty(STDOUT_FILENO)) {
           putchar('\n');
         }
-        num_frames++;
         break;
       }
     }
