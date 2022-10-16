@@ -14,7 +14,7 @@
 #include "crc-lib-c/crcLib.h"
 
 #include "backend.h"
-#include "constants.h"
+#include "common.h"
 
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
@@ -142,15 +142,8 @@ static bool decode_bit(size_t *startp) {
 }
 
 int main(int argc, char **argv) {
-  for (int i = 0; i < RATE; i++) {
-    double t = i / (double)RATE;
-    carrier[i] = sin(2 * M_PI * 10000 * t);
-  }
-
-  for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
-    double tmp = i / 24. + i * i / 2880.;
-    preamble[PREAMBLE_LEN - 1 - i] = preamble[i] = cos(2 * M_PI * tmp);
-  }
+  GET_CARRIER(carrier);
+  GET_PREAMBLE(preamble, 1);
 
   pthread_t capture_thread;
   pthread_create(&capture_thread, NULL, capture_loop, NULL);

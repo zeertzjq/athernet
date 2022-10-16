@@ -1,5 +1,0 @@
-#define RATE 48000
-#define BIT_LEN 48
-#define FRAME_BITS 100
-#define PREAMBLE_LEN 480
-#define HALF_PREAMBLE_LEN 240
