@@ -144,13 +144,16 @@ static bool receive_frame_hamming(bool new_bit, bool *bits) {
 }
 
 int main(int argc, char **argv) {
+  bool binary = false;
   bool (*receive_frame)(bool, bool *) = receive_frame_plain;
   int max_frames = 10000 / FRAME_BITS;
   size_t frame_bits = FRAME_BITS;
   int carrier_freq = 10000;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--hamming") == 0) {
+    if (strcmp(argv[i], "--binary") == 0) {
+      binary = true;
+    } else if (strcmp(argv[i], "--hamming") == 0) {
       receive_frame = receive_frame_hamming;
     } else if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
@@ -195,11 +198,21 @@ int main(int argc, char **argv) {
       if (receive_frame(decode_bit(&capture_read_pos), bits)) {
         found_preamble = false;
         num_frames++;
-        for (int i = 0; i < frame_bits; i++) {
-          printf("%d", bits[i]);
-        }
-        if (isatty(STDOUT_FILENO)) {
-          putchar('\n');
+        if (binary) {
+          for (int i = 0; i < frame_bits; i += 8) {
+            int c = 0;
+            for (int k = 0; k < 8; k++) {
+              c |= bits[i + k] << k;
+            }
+            putchar(c);
+          }
+        } else {
+          for (int i = 0; i < frame_bits; i++) {
+            printf("%d", bits[i]);
+          }
+          if (isatty(STDOUT_FILENO)) {
+            putchar('\n');
+          }
         }
         break;
       }

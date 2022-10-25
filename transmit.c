@@ -58,13 +58,16 @@ static void transmit_frame_hamming(bool *bits) {
 }
 
 int main(int argc, char **argv) {
+  bool binary = false;
   void (*transmit_frame)(bool *) = transmit_frame_plain;
   int max_frames = 10000 / FRAME_BITS;
   size_t frame_bits = FRAME_BITS;
   int carrier_freq = 10000;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--hamming") == 0) {
+    if (strcmp(argv[i], "--binary") == 0) {
+      binary = true;
+    } else if (strcmp(argv[i], "--hamming") == 0) {
       transmit_frame = transmit_frame_hamming;
     } else if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
@@ -88,10 +91,19 @@ int main(int argc, char **argv) {
   playback_start();
   for (int i = 0; i < max_frames; i++) {
     bool bits[FRAME_BITS];
-    for (int i = 0; i < frame_bits; i++) {
-      char c;
-      scanf(" %c", &c);
-      bits[i] = c > '0';
+    if (binary) {
+      for (int i = 0; i < frame_bits; i += 8) {
+        int c = getchar();
+        for (int k = 0; k < 8; k++) {
+          bits[i + k] = c & (1 << k);
+        }
+      }
+    } else {
+      for (int i = 0; i < frame_bits; i++) {
+        char c;
+        scanf(" %c", &c);
+        bits[i] = c > '0';
+      }
     }
     playback_write(zero_buf, ZERO_LEN);
     transmit_frame(bits);
