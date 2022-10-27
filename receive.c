@@ -214,6 +214,7 @@ int main(int argc, char **argv) {
             putchar('\n');
           }
         }
+        fflush(stdout);
         break;
       }
     }
