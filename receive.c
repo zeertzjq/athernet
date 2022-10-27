@@ -36,7 +36,6 @@ static bool find_preamble(size_t *startp, size_t end) {
   static int16_t buf[PREAMBLE_LEN];
   static int64_t buf_abs_sum = 0;
   static int64_t buf_sqr_sum = 0;
-  static double max_product_full = 0;
   static double max_product_half = 0;
   static int preamble_pos = -1;
   while (*startp != end) {
@@ -49,15 +48,7 @@ static bool find_preamble(size_t *startp, size_t end) {
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
-    double product_full = 0;
     double product_half = 0;
-    for (int i = 0; i < PREAMBLE_LEN; i++) {
-      product_full += preamble[i] * buf[i];
-    }
-    product_full /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN;
-    if (product_full > 0.3 && product_full > max_product_full) {
-      max_product_full = product_full;
-    }
     for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
       product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
     }
@@ -69,16 +60,12 @@ static bool find_preamble(size_t *startp, size_t end) {
       preamble_pos++;
     }
     if (preamble_pos == HALF_PREAMBLE_LEN) {
-      bool found = product_full >= max_product_full;
       memset(buf, 0, sizeof(buf));
       buf_abs_sum = 0;
       buf_sqr_sum = 0;
-      max_product_full = 0;
       max_product_half = 0;
       preamble_pos = -1;
-      if (found) {
-        return true;
-      }
+      return true;
     }
   }
   return false;
