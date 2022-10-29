@@ -21,7 +21,7 @@ static int volume = 16384;
 static void transmit_bit(bool bit) {
   int16_t bit_buf[BIT_LEN];
   for (int i = 0; i < BIT_LEN; i++) {
-    bit_buf[i] = carrier[carrier_pos + i] * (bit ? 1 : -1) * volume;
+    bit_buf[i] = (bit ? 1 : -1) * volume * carrier[carrier_pos + i];
   }
   playback_write(bit_buf, BIT_LEN);
   carrier_pos += BIT_LEN;
