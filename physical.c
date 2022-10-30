@@ -131,7 +131,7 @@ void receive_frame(bool *bits) {
   for (;;) {
     size_t capture_read_end = capture_pos;
     if (capture_read_pos == capture_read_end) {
-      usleep(100);
+      usleep(1000000 / RATE);
       continue;
     }
     if (!found_preamble) {
