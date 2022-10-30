@@ -24,4 +24,5 @@ void playback_write(int16_t *buf, size_t len) {
   for (int i = 0; i < len; i++) {
     printf("%hd ", buf[i]);
   }
+  usleep(len * 1000000 / RATE);
 }
