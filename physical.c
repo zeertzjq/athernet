@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "backend.h"
@@ -39,11 +40,11 @@ void *capture_loop(void *args) {
 
 void phy_init(void) {
   for (int i = 0; i < RATE; i++) {
-    double t = i / (double)RATE;
+    const double t = i / (double)RATE;
     carrier[i] = sin(2 * M_PI * carrier_freq * t);
   }
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
-    double t = i / 24. + i * i / 2880.;
+    const double t = i / 24. + i * i / 2880.;
     preamble[PREAMBLE_LEN - 1 - i] = preamble[i] = cos(2 * M_PI * t);
   }
   for (int i = 0; i < PREAMBLE_LEN; i++) {
@@ -51,14 +52,14 @@ void phy_init(void) {
   }
 }
 
-static void encode_bit(bool bit, size_t *carrier_pos) {
+static void encode_bit(const bool bit, size_t *const carrier_pos) {
   for (int i = 0; i < BIT_LEN; i++) {
     playback_buf[playback_len++] =
         (bit ? 1 : -1) * volume * carrier[(*carrier_pos)++];
   }
 }
 
-void transmit_frame(bool *bits) {
+void transmit_frame(const bool *const bits) {
   playback_len = PREAMBLE_LEN;
   size_t carrier_pos = 0;
   for (int i = 0; i < FRAME_BITS; i++) {
@@ -67,9 +68,9 @@ void transmit_frame(bool *bits) {
   playback_write(playback_buf, playback_len);
 }
 
-static int64_t sqr(int64_t x) { return x * x; }
+static int64_t sqr(const int64_t x) { return x * x; }
 
-static bool find_preamble(size_t *startp, size_t end) {
+static bool find_preamble(size_t *const startp, const size_t end) {
   static int16_t buf[PREAMBLE_LEN];
   static int64_t buf_abs_sum = 0;
   static int64_t buf_sqr_sum = 0;
@@ -108,11 +109,11 @@ static bool find_preamble(size_t *startp, size_t end) {
   return false;
 }
 
-static size_t remaining(size_t start, size_t end) {
+static size_t capture_remaining(const size_t start, const size_t end) {
   return end - start + (start <= end ? 0 : PREAMBLE_LEN * 2);
 }
 
-static bool decode_bit(size_t *startp, size_t *carrier_pos) {
+static bool decode_bit(size_t *const startp, size_t *const carrier_pos) {
   double product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
     product += capture_buf[(*startp)++] * carrier[(*carrier_pos)++];
@@ -123,33 +124,34 @@ static bool decode_bit(size_t *startp, size_t *carrier_pos) {
   return product > 0;
 }
 
-bool receive_frame(bool *bits, suseconds_t timeout) {
-  static size_t capture_read_pos = 0;
+void receive_frame(bool *const bits, suseconds_t *const timeout) {
+  static size_t read_pos = 0;
   bool found_preamble = false;
   size_t carrier_pos = 0;
   size_t frame_pos = 0;
   for (;;) {
-    size_t capture_read_end = capture_pos;
-    if (capture_read_pos == capture_read_end) {
-      if (timeout >= 0) {
-        if (timeout >= PERIOD_USEC) {
-          timeout -= PERIOD_USEC;
+    const size_t read_end = capture_pos;
+    if (read_pos == read_end) {
+      if (timeout != NULL) {
+        if (*timeout >= PERIOD_USEC) {
+          *timeout -= PERIOD_USEC;
         } else {
-          return false;
+          *timeout = -1;
+          return;
         }
       }
       usleep(PERIOD_USEC);
       continue;
     }
     if (!found_preamble) {
-      found_preamble = find_preamble(&capture_read_pos, capture_read_end);
+      found_preamble = find_preamble(&read_pos, read_end);
       continue;
     }
-    while (remaining(capture_read_pos, capture_read_end) >= BIT_LEN) {
-      bits[frame_pos++] = decode_bit(&capture_read_pos, &carrier_pos);
+    while (capture_remaining(read_pos, read_end) >= BIT_LEN) {
+      bits[frame_pos++] = decode_bit(&read_pos, &carrier_pos);
       if (frame_pos == FRAME_BITS) {
         frame_pos = 0;
-        return true;
+        return;
       }
     }
   }

@@ -15,7 +15,6 @@
 int main(int argc, char **argv) {
   bool binary = false;
   int max_frames = 10000 / FRAME_BITS;
-  size_t frame_bits = FRAME_BITS;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--binary") == 0) {
@@ -37,9 +36,9 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < max_frames; i++) {
     bool bits[FRAME_BITS];
-    receive_frame(bits, -1);
+    receive_frame(bits, NULL);
     if (binary) {
-      for (int i = 0; i < frame_bits; i += 8) {
+      for (int i = 0; i < FRAME_BITS; i += 8) {
         int c = 0;
         for (int k = 0; k < 8; k++) {
           c |= bits[i + k] << k;
@@ -47,7 +46,7 @@ int main(int argc, char **argv) {
         putchar(c);
       }
     } else {
-      for (int i = 0; i < frame_bits; i++) {
+      for (int i = 0; i < FRAME_BITS; i++) {
         printf("%d", bits[i]);
       }
     }
