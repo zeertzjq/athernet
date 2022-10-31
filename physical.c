@@ -20,7 +20,8 @@ sig_atomic_t capture_stopped = 0;
 
 static double carrier[RATE];
 static double preamble[PREAMBLE_LEN];
-static int16_t preamble_out[PREAMBLE_LEN];
+static int16_t playback_buf[RATE];
+static size_t playback_len = 0;
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static sig_atomic_t capture_pos = 0;
 
@@ -45,25 +46,24 @@ void phy_init(void) {
     preamble[PREAMBLE_LEN - 1 - i] = preamble[i] = cos(2 * M_PI * t);
   }
   for (int i = 0; i < PREAMBLE_LEN; i++) {
-    preamble_out[i] = preamble[i] * volume;
+    playback_buf[i] = preamble[i] * volume;
   }
 }
 
-static void transmit_bit(bool bit, size_t *carrier_pos) {
-  int16_t bit_buf[BIT_LEN];
+static void encode_bit(bool bit, size_t *carrier_pos) {
   for (int i = 0; i < BIT_LEN; i++) {
-    bit_buf[i] = (bit ? 1 : -1) * volume * carrier[*carrier_pos + i];
+    playback_buf[playback_len++] =
+        (bit ? 1 : -1) * volume * carrier[(*carrier_pos)++];
   }
-  playback_write(bit_buf, BIT_LEN);
-  *carrier_pos += BIT_LEN;
 }
 
 void transmit_frame(bool *bits) {
-  playback_write(preamble_out, PREAMBLE_LEN);
+  playback_len = PREAMBLE_LEN;
   size_t carrier_pos = 0;
   for (int i = 0; i < FRAME_BITS; i++) {
-    transmit_bit(bits[i], &carrier_pos);
+    encode_bit(bits[i], &carrier_pos);
   }
+  playback_write(playback_buf, playback_len);
 }
 
 static int64_t sqr(int64_t x) { return x * x; }
@@ -114,12 +114,11 @@ static size_t remaining(size_t start, size_t end) {
 static bool decode_bit(size_t *startp, size_t *carrier_pos) {
   double product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
-    product += capture_buf[(*startp)++] * carrier[*carrier_pos + i];
+    product += capture_buf[(*startp)++] * carrier[(*carrier_pos)++];
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
   }
-  *carrier_pos += BIT_LEN;
   return product > 0;
 }
 

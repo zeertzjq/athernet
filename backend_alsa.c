@@ -44,5 +44,7 @@ void playback_stop(void) {
 }
 
 void playback_write(int16_t *buf, size_t len) {
+  E(snd_pcm_prepare, playback);
   E(snd_pcm_writei, playback, buf, len);
+  E(snd_pcm_drain, playback);
 }

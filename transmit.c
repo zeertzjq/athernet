@@ -11,9 +11,6 @@
 #include "common.h"
 #include "physical.h"
 
-#define ZERO_LEN 480
-static int16_t zero_buf[ZERO_LEN];
-
 int main(int argc, char **argv) {
   bool binary = false;
   int max_frames = 10000 / FRAME_BITS;
@@ -53,7 +50,6 @@ int main(int argc, char **argv) {
         bits[i] = c > '0';
       }
     }
-    playback_write(zero_buf, ZERO_LEN);
     transmit_frame(bits);
   }
   playback_stop();
