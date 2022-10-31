@@ -12,15 +12,14 @@
 #include "common.h"
 
 #define PERIOD_USEC (1000000 / RATE)
-#define BIT_LEN 6
+#define BIT_LEN 4
 #define PREAMBLE_LEN 480
 #define HALF_PREAMBLE_LEN 240
 
-int carrier_freq = 16000;
 int volume = 16384;
 sig_atomic_t capture_stopped = 0;
 
-static double carrier[RATE];
+static int16_t carrier[BIT_LEN] = {1, 1, -1, 1};
 static double preamble[PREAMBLE_LEN];
 static int16_t playback_buf[RATE];
 static size_t playback_len = 0;
@@ -39,10 +38,6 @@ void *capture_loop(void *args) {
 }
 
 void phy_init(void) {
-  for (int i = 0; i < RATE; i++) {
-    const double t = i / (double)RATE;
-    carrier[i] = sin(2 * M_PI * carrier_freq * t);
-  }
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
     const double t = i / 24. + i * i / 2880.;
     preamble[PREAMBLE_LEN - 1 - i] = preamble[i] = cos(2 * M_PI * t);
@@ -52,18 +47,16 @@ void phy_init(void) {
   }
 }
 
-static void encode_bit(const bool bit, size_t *const carrier_pos) {
+static void encode_bit(const bool bit) {
   for (int i = 0; i < BIT_LEN; i++) {
-    playback_buf[playback_len++] =
-        (bit ? 1 : -1) * volume * carrier[(*carrier_pos)++];
+    playback_buf[playback_len++] = (bit ? 1 : -1) * volume * carrier[i];
   }
 }
 
 void transmit_frame(const bool *const bits) {
   playback_len = PREAMBLE_LEN;
-  size_t carrier_pos = 0;
   for (int i = 0; i < FRAME_BITS; i++) {
-    encode_bit(bits[i], &carrier_pos);
+    encode_bit(bits[i]);
   }
   playback_write(playback_buf, playback_len);
 }
@@ -113,10 +106,10 @@ static size_t capture_remaining(const size_t start, const size_t end) {
   return end - start + (start <= end ? 0 : PREAMBLE_LEN * 2);
 }
 
-static bool decode_bit(size_t *const startp, size_t *const carrier_pos) {
+static bool decode_bit(size_t *const startp) {
   double product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
-    product += capture_buf[(*startp)++] * carrier[(*carrier_pos)++];
+    product += capture_buf[(*startp)++] * carrier[i];
     if (*startp == PREAMBLE_LEN * 2) {
       *startp = 0;
     }
@@ -127,7 +120,6 @@ static bool decode_bit(size_t *const startp, size_t *const carrier_pos) {
 void receive_frame(bool *const bits, suseconds_t *const timeout) {
   static size_t read_pos = 0;
   bool found_preamble = false;
-  size_t carrier_pos = 0;
   size_t frame_pos = 0;
   for (;;) {
     const size_t read_end = capture_pos;
@@ -148,7 +140,7 @@ void receive_frame(bool *const bits, suseconds_t *const timeout) {
       continue;
     }
     while (capture_remaining(read_pos, read_end) >= BIT_LEN) {
-      bits[frame_pos++] = decode_bit(&read_pos, &carrier_pos);
+      bits[frame_pos++] = decode_bit(&read_pos);
       if (frame_pos == FRAME_BITS) {
         frame_pos = 0;
         return;

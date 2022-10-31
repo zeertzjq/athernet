@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-extern int carrier_freq;
 extern int volume;
 extern sig_atomic_t capture_stopped;
 

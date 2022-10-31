@@ -17,8 +17,6 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
-    } else if (strncmp(argv[i], S_LEN("--carrier=")) == 0) {
-      carrier_freq = atoi(argv[i] + LEN("--carrier="));
     } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else {

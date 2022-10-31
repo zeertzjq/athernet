@@ -18,8 +18,6 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--frames=")) == 0) {
       max_frames = atoi(argv[i] + LEN("--frames="));
-    } else if (strncmp(argv[i], S_LEN("--carrier=")) == 0) {
-      carrier_freq = atoi(argv[i] + LEN("--carrier="));
     } else {
       fprintf(stderr, "Invalid argument: %s\n", argv[i]);
       return EXIT_FAILURE;
