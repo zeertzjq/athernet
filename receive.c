@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < max_frames; i++) {
     bool bits[FRAME_BITS];
-    receive_frame(bits);
+    receive_frame(bits, -1);
     if (binary) {
       for (int i = 0; i < frame_bits; i += 8) {
         int c = 0;

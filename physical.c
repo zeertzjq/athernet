@@ -10,6 +10,7 @@
 #include "backend.h"
 #include "common.h"
 
+#define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 48
 #define PREAMBLE_LEN 480
 #define HALF_PREAMBLE_LEN 240
@@ -122,7 +123,7 @@ static bool decode_bit(size_t *startp, size_t *carrier_pos) {
   return product > 0;
 }
 
-void receive_frame(bool *bits) {
+bool receive_frame(bool *bits, suseconds_t timeout) {
   static size_t capture_read_pos = 0;
   bool found_preamble = false;
   size_t carrier_pos = 0;
@@ -130,7 +131,14 @@ void receive_frame(bool *bits) {
   for (;;) {
     size_t capture_read_end = capture_pos;
     if (capture_read_pos == capture_read_end) {
-      usleep(1000000 / RATE);
+      if (timeout >= 0) {
+        if (timeout >= PERIOD_USEC) {
+          timeout -= PERIOD_USEC;
+        } else {
+          return false;
+        }
+      }
+      usleep(PERIOD_USEC);
       continue;
     }
     if (!found_preamble) {
@@ -141,7 +149,7 @@ void receive_frame(bool *bits) {
       bits[frame_pos++] = decode_bit(&capture_read_pos, &carrier_pos);
       if (frame_pos == FRAME_BITS) {
         frame_pos = 0;
-        return;
+        return true;
       }
     }
   }
