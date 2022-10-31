@@ -13,8 +13,8 @@
 
 #define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 4
-#define PREAMBLE_LEN 480
-#define HALF_PREAMBLE_LEN 240
+#define PREAMBLE_LEN 320
+#define HALF_PREAMBLE_LEN 160
 
 int volume = 16384;
 sig_atomic_t capture_stopped = 0;
