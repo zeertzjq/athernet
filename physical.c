@@ -19,7 +19,7 @@
 int volume = 16384;
 sig_atomic_t capture_stopped = 0;
 
-static int16_t carrier[BIT_LEN] = {1, 1, -1, 1};
+static const int carrier[BIT_LEN] = {1, 1, -1, 1};
 static double preamble[PREAMBLE_LEN];
 static int16_t playback_buf[RATE];
 static size_t playback_len = 0;
@@ -107,7 +107,7 @@ static size_t capture_remaining(const size_t start, const size_t end) {
 }
 
 static bool decode_bit(size_t *const startp) {
-  double product = 0;
+  int product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
     product += capture_buf[(*startp)++] * carrier[i];
     if (*startp == PREAMBLE_LEN * 2) {
