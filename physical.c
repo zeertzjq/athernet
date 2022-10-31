@@ -12,11 +12,11 @@
 #include "common.h"
 
 #define PERIOD_USEC (1000000 / RATE)
-#define BIT_LEN 48
+#define BIT_LEN 6
 #define PREAMBLE_LEN 480
 #define HALF_PREAMBLE_LEN 240
 
-int carrier_freq = 10000;
+int carrier_freq = 16000;
 int volume = 16384;
 sig_atomic_t capture_stopped = 0;
 
