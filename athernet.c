@@ -70,15 +70,15 @@ int main(int argc, char **argv) {
     }
     playback_stop();
   } else if (receive_bytes > 0 && transmit_bytes == 0) {
-    pthread_t capture_thread;
-    pthread_create(&capture_thread, NULL, capture_loop, NULL);
+    pthread_t receive_thread;
+    pthread_create(&receive_thread, NULL, receive_loop, NULL);
     while (--receive_frames >= 0) {
       bool bits[FRAME_BITS];
       receive_frame(bits, NULL);
       output_frame(bits);
     }
-    capture_stopped = 1;
-    pthread_join(capture_thread, NULL);
+    receive_stopped = 1;
+    pthread_join(receive_thread, NULL);
   } else {
     fprintf(stderr, "CSMA not implemented yet\n");
     return EXIT_FAILURE;

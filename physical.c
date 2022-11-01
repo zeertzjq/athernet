@@ -17,25 +17,12 @@
 #define HALF_PREAMBLE_LEN 160
 
 int volume = 16384;
-sig_atomic_t capture_stopped = 0;
+sig_atomic_t receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1, 1};
 static double preamble[PREAMBLE_LEN];
 static int16_t playback_buf[RATE];
 static size_t playback_len = 0;
-static int16_t capture_buf[PREAMBLE_LEN * 2];
-static sig_atomic_t capture_pos = 0;
-
-void *capture_loop(void *args) {
-  capture_start();
-  while (!capture_stopped) {
-    size_t pos = capture_pos;
-    capture_read(capture_buf + pos, PREAMBLE_LEN);
-    capture_pos = pos == PREAMBLE_LEN ? 0 : PREAMBLE_LEN;
-  }
-  capture_stop();
-  return NULL;
-}
 
 void phy_init(void) {
   for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
@@ -61,23 +48,29 @@ void transmit_frame(const bool *const bits) {
   playback_write(playback_buf, playback_len);
 }
 
+static int16_t capture_buf[PREAMBLE_LEN * 2];
+static int16_t read_pos = 0;
+static int16_t read_end = 0;
+static bool received_bits[FRAME_BITS];
+static sig_atomic_t did_receive = 0;
+
 static int64_t sqr(const int64_t x) { return x * x; }
 
-static bool find_preamble(size_t *const startp, const size_t end) {
+static bool find_preamble(void) {
   static int16_t buf[PREAMBLE_LEN];
   static int64_t buf_abs_sum = 0;
   static int64_t buf_sqr_sum = 0;
   static double max_product_half = 0;
   static int preamble_pos = -1;
-  while (*startp != end) {
+  while (read_pos != read_end) {
     buf_abs_sum -= abs(buf[0]);
     buf_sqr_sum -= sqr(buf[0]);
     memmove(buf, buf + 1, sizeof(buf) - sizeof(buf[0]));
-    buf[PREAMBLE_LEN - 1] = capture_buf[(*startp)++];
+    buf[PREAMBLE_LEN - 1] = capture_buf[read_pos++];
     buf_abs_sum += abs(buf[PREAMBLE_LEN - 1]);
     buf_sqr_sum += sqr(buf[PREAMBLE_LEN - 1]);
-    if (*startp == PREAMBLE_LEN * 2) {
-      *startp = 0;
+    if (read_pos == PREAMBLE_LEN * 2) {
+      read_pos = 0;
     }
     double product_half = 0;
     for (int i = 0; i < HALF_PREAMBLE_LEN; i++) {
@@ -102,49 +95,62 @@ static bool find_preamble(size_t *const startp, const size_t end) {
   return false;
 }
 
-static size_t capture_remaining(const size_t start, const size_t end) {
-  return end - start + (start <= end ? 0 : PREAMBLE_LEN * 2);
-}
-
-static bool decode_bit(size_t *const startp) {
+static bool decode_bit(const int16_t *const buf) {
   int product = 0;
   for (int i = 0; i < BIT_LEN; i++) {
-    product += capture_buf[(*startp)++] * carrier[i];
-    if (*startp == PREAMBLE_LEN * 2) {
-      *startp = 0;
-    }
+    product += buf[i] * carrier[i];
   }
   return product > 0;
 }
 
-void receive_frame(bool *const bits, suseconds_t *const timeout) {
-  static size_t read_pos = 0;
+void *receive_loop(void *args) {
   bool found_preamble = false;
+  int16_t bit_buf[BIT_LEN];
+  size_t bit_pos = 0;
+  bool bits[FRAME_BITS];
   size_t frame_pos = 0;
-  for (;;) {
-    const size_t read_end = capture_pos;
-    if (read_pos == read_end) {
-      if (timeout != NULL) {
-        if (*timeout >= PERIOD_USEC) {
-          *timeout -= PERIOD_USEC;
-        } else {
-          *timeout = -1;
-          return;
-        }
+  capture_start();
+  while (!receive_stopped) {
+    capture_read(capture_buf + read_end, PREAMBLE_LEN);
+    read_end = PREAMBLE_LEN - read_end;
+    while (read_pos != read_end) {
+      if (!found_preamble) {
+        found_preamble = find_preamble();
+        continue;
       }
-      usleep(PERIOD_USEC);
-      continue;
-    }
-    if (!found_preamble) {
-      found_preamble = find_preamble(&read_pos, read_end);
-      continue;
-    }
-    while (capture_remaining(read_pos, read_end) >= BIT_LEN) {
-      bits[frame_pos++] = decode_bit(&read_pos);
-      if (frame_pos == FRAME_BITS) {
-        frame_pos = 0;
-        return;
+      bit_buf[bit_pos++] = capture_buf[read_pos++];
+      if (read_pos == PREAMBLE_LEN * 2) {
+        read_pos = 0;
+      }
+      if (bit_pos == BIT_LEN) {
+        bits[frame_pos++] = decode_bit(bit_buf);
+        bit_pos = 0;
+        if (frame_pos == FRAME_BITS) {
+          found_preamble = false;
+          memcpy(received_bits, bits, sizeof(received_bits));
+          frame_pos = 0;
+          did_receive = 1;
+          break;
+        }
       }
     }
   }
+  capture_stop();
+  return NULL;
+}
+
+void receive_frame(bool *const bits, suseconds_t *const timeout) {
+  did_receive = 0;
+  while (!did_receive) {
+    if (timeout != NULL) {
+      if (*timeout >= PERIOD_USEC) {
+        *timeout -= PERIOD_USEC;
+      } else {
+        *timeout = -1;
+        return;
+      }
+    }
+    usleep(PERIOD_USEC);
+  }
+  memcpy(bits, received_bits, sizeof(received_bits));
 }
