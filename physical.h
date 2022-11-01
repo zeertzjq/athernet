@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 extern int volume;
-extern bool need_crc;
+extern bool has_ack;
 extern sig_atomic_t receive_stopped;
 
 void phy_init(void);

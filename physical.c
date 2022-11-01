@@ -17,7 +17,7 @@
 #define HALF_PREAMBLE_LEN 160
 
 int volume = 16384;
-bool need_crc = false;
+bool has_ack = false;
 sig_atomic_t receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1, 1};
@@ -59,12 +59,10 @@ void transmit_frame(const bool *const bits) {
   for (int i = 0; i < FRAME_BITS; i++) {
     encode_bit(bits[i]);
   }
-  if (need_crc) {
-    bool crc_bits[8];
-    decompose_byte(crc8(bits), crc_bits);
-    for (int i = 0; i < 8; i++) {
-      encode_bit(crc_bits[i]);
-    }
+  bool crc_bits[8];
+  decompose_byte(crc8(bits), crc_bits);
+  for (int i = 0; i < 8; i++) {
+    encode_bit(crc_bits[i]);
   }
   playback_write(playback_buf, playback_len);
 }
@@ -152,15 +150,12 @@ void *receive_loop(void *args) {
           bits[frame_pos++] = decode_bit(bit_buf);
         }
         bit_pos = 0;
-        if (frame_pos == FRAME_BITS && (!need_crc || crc_pos == 8)) {
+        if (frame_pos == FRAME_BITS && crc_pos == 8) {
           found_preamble = false;
           frame_pos = 0;
-          if (need_crc) {
-            crc_pos = 0;
-            if (crc8(bits) != compose_byte(crc_bits)) {
-              // continue;
-              write(2, S_LEN("wrong\n"));
-            }
+          crc_pos = 0;
+          if (has_ack && crc8(bits) != compose_byte(crc_bits)) {
+            continue;
           }
           memcpy(received_bits, bits, sizeof(received_bits));
           did_receive = 1;
