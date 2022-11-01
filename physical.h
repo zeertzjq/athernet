@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 extern int volume;
-extern sig_atomic_t did_receive;
+extern bool need_crc;
 extern sig_atomic_t receive_stopped;
 
 void phy_init(void);

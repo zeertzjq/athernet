@@ -11,20 +11,13 @@
 
 static void input_frame(bool *const bits) {
   for (int i = 0; i < FRAME_BITS; i += 8) {
-    int c = getchar();
-    for (int k = 0; k < 8; k++) {
-      bits[i + k] = c & (1 << k);
-    }
+    decompose_byte(getchar(), bits + i);
   }
 }
 
 static void output_frame(const bool *const bits) {
   for (int i = 0; i < FRAME_BITS; i += 8) {
-    int c = 0;
-    for (int k = 0; k < 8; k++) {
-      c |= bits[i + k] << k;
-    }
-    putchar(c);
+    putchar(compose_byte(bits + i));
   }
   fflush(stdout);
 }
