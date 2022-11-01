@@ -65,9 +65,14 @@ int main(int argc, char **argv) {
     while (--transmit_frames >= 0) {
       bool bits[FRAME_BITS];
       input_frame(bits);
+      int num_retries = 10;
       do {
         transmit_frame(bits);
-      } while (has_ack && !receive_ack(50000));
+      } while (has_ack && !receive_ack(50000) && --num_retries >= 0);
+      if (num_retries < 0) {
+        fprintf(stderr, "link error\n");
+        break;
+      }
     }
     if (has_ack) {
       receive_stopped = 1;
