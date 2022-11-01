@@ -67,11 +67,17 @@ void transmit_frame(const bool *const bits) {
   playback_write(playback_buf, playback_len);
 }
 
+void transmit_ack(void) {
+  playback_len = PREAMBLE_LEN;
+  playback_write(playback_buf, playback_len);
+}
+
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static int16_t read_pos = 0;
 static int16_t read_end = 0;
 static bool received_bits[FRAME_BITS];
-static sig_atomic_t did_receive = 0;
+static sig_atomic_t did_receive_frame = 0;
+static sig_atomic_t waiting_ack = 0;
 
 static int64_t sqr(const int64_t x) { return x * x; }
 
@@ -136,7 +142,13 @@ void *receive_loop(void *args) {
     read_end = PREAMBLE_LEN - read_end;
     while (read_pos != read_end) {
       if (!found_preamble) {
-        found_preamble = find_preamble();
+        if (find_preamble()) {
+          if (waiting_ack) {
+            waiting_ack = 0;
+          } else {
+            found_preamble = true;
+          }
+        }
         continue;
       }
       bit_buf[bit_pos++] = capture_buf[read_pos++];
@@ -158,7 +170,7 @@ void *receive_loop(void *args) {
             continue;
           }
           memcpy(received_bits, bits, sizeof(received_bits));
-          did_receive = 1;
+          did_receive_frame = 1;
           continue;
         }
       }
@@ -168,18 +180,24 @@ void *receive_loop(void *args) {
   return NULL;
 }
 
-void receive_frame(bool *const bits, suseconds_t *const timeout) {
-  while (!did_receive) {
-    if (timeout != NULL) {
-      if (*timeout >= PERIOD_USEC) {
-        *timeout -= PERIOD_USEC;
-      } else {
-        *timeout = -1;
-        return;
-      }
-    }
+void receive_frame(bool *const bits) {
+  while (!did_receive_frame) {
     usleep(PERIOD_USEC);
   }
   memcpy(bits, received_bits, sizeof(received_bits));
-  did_receive = 0;
+  did_receive_frame = 0;
+}
+
+bool receive_ack(bool *const bits, suseconds_t timeout) {
+  waiting_ack = 1;
+  while (waiting_ack) {
+    if (timeout >= PERIOD_USEC) {
+      timeout -= PERIOD_USEC;
+    } else {
+      waiting_ack = 0;
+      return false;
+    }
+    usleep(PERIOD_USEC);
+  }
+  return true;
 }

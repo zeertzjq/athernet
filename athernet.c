@@ -27,7 +27,9 @@ int main(int argc, char **argv) {
   int receive_bytes = 0;
 
   for (int i = 1; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--transmit=")) == 0) {
+    if (strcmp(argv[i], "--ack") == 0) {
+      has_ack = true;
+    } else if (strncmp(argv[i], S_LEN("--transmit=")) == 0) {
       transmit_bytes = atoi(argv[i] + LEN("--transmit="));
     } else if (strncmp(argv[i], S_LEN("--receive=")) == 0) {
       receive_bytes = atoi(argv[i] + LEN("--receive="));
@@ -53,22 +55,40 @@ int main(int argc, char **argv) {
   int receive_frames = (receive_bytes * 8 + FRAME_BITS - 1) / FRAME_BITS;
 
   phy_init();
+  pthread_t receive_thread;
 
   if (transmit_bytes > 0 && receive_bytes == 0) {
     playback_start();
+    if (has_ack) {
+      pthread_create(&receive_thread, NULL, receive_loop, NULL);
+    }
     while (--transmit_frames >= 0) {
       bool bits[FRAME_BITS];
       input_frame(bits);
-      transmit_frame(bits);
+      do {
+        transmit_frame(bits);
+      } while (has_ack && !receive_ack(50000));
+    }
+    if (has_ack) {
+      receive_stopped = 1;
+      pthread_join(receive_thread, NULL);
     }
     playback_stop();
   } else if (receive_bytes > 0 && transmit_bytes == 0) {
-    pthread_t receive_thread;
     pthread_create(&receive_thread, NULL, receive_loop, NULL);
+    if (has_ack) {
+      playback_start();
+    }
     while (--receive_frames >= 0) {
       bool bits[FRAME_BITS];
-      receive_frame(bits, NULL);
+      receive_frame(bits);
+      if (has_ack) {
+        transmit_ack();
+      }
       output_frame(bits);
+    }
+    if (has_ack) {
+      playback_stop();
     }
     receive_stopped = 1;
     pthread_join(receive_thread, NULL);
