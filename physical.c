@@ -140,7 +140,6 @@ void *receive_loop(void *args) {
 }
 
 void receive_frame(bool *const bits, suseconds_t *const timeout) {
-  did_receive = 0;
   while (!did_receive) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
@@ -153,4 +152,5 @@ void receive_frame(bool *const bits, suseconds_t *const timeout) {
     usleep(PERIOD_USEC);
   }
   memcpy(bits, received_bits, sizeof(received_bits));
+  did_receive = 0;
 }
