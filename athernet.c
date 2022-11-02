@@ -52,51 +52,64 @@ int main(int argc, char **argv) {
   }
 
   const size_t frame_len = PHY_PAYLOAD_FIXED;
-  int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
-  int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
+  const int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
+  const int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
 
   phy_init();
   pthread_t receive_thread;
 
   if (transmit_bytes > 0 && receive_bytes == 0) {
     playback_start();
-    // if (has_ack) {
-    //   pthread_create(&receive_thread, NULL, receive_loop, NULL);
-    // }
-    while (--transmit_frames >= 0) {
+    if (has_ack) {
+      pthread_create(&receive_thread, NULL, receive_loop, NULL);
+    }
+    for (int i = 0; i < transmit_frames; i++) {
       bool bits[PHY_PAYLOAD_MAX];
       input_frame(bits, frame_len);
-      int num_retries = 10;
-      // do {
-      transmit_frame(bits, frame_len);
-      // } while (has_ack && !receive_ack(50000) && --num_retries >= 0);
+      int num_retries = 5;
+      do {
+        transmit_frame(bits, frame_len);
+        if (has_ack) {
+          const uint8_t ack_num = i & 0xFF;
+          suseconds_t timeout = 50000;
+          bool ack_bits[8];
+          while (!receive_frame(ack_bits, 8, &timeout) && timeout >= 0) {
+          }
+          if (timeout >= 0 && compose_byte(ack_bits) == ack_num) {
+            break;
+          }
+        }
+      } while (has_ack && --num_retries >= 0);
       if (num_retries < 0) {
         fprintf(stderr, "link error\n");
         break;
       }
     }
-    // if (has_ack) {
-    //   receive_stopped = 1;
-    //   pthread_join(receive_thread, NULL);
-    // }
+    if (has_ack) {
+      receive_stopped = 1;
+      pthread_join(receive_thread, NULL);
+    }
     playback_stop();
   } else if (receive_bytes > 0 && transmit_bytes == 0) {
     pthread_create(&receive_thread, NULL, receive_loop, NULL);
-    // if (has_ack) {
-    //   playback_start();
-    // }
-    while (--receive_frames >= 0) {
+    if (has_ack) {
+      playback_start();
+    }
+    for (int i = 0; i < receive_frames; i++) {
       bool bits[PHY_PAYLOAD_MAX];
-      while (receive_frame(bits, NULL) != frame_len) {
+      while (!receive_frame(bits, frame_len, NULL)) {
       }
-      // if (has_ack) {
-      //   transmit_ack();
-      // }
+      if (has_ack) {
+        const uint8_t ack_num = i & 0xFF;
+        bool ack_bits[8];
+        decompose_byte(ack_num, ack_bits);
+        transmit_frame(ack_bits, 8);
+      }
       output_frame(bits, frame_len);
     }
-    // if (has_ack) {
-    //   playback_stop();
-    // }
+    if (has_ack) {
+      playback_stop();
+    }
     receive_stopped = 1;
     pthread_join(receive_thread, NULL);
   } else {

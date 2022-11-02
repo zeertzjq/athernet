@@ -183,7 +183,7 @@ void *receive_loop(void *args) {
           if (has_ack && crc8(bits, payload_len) != compose_byte(crc_bits)) {
             continue;
           }
-          memcpy(received_bits, bits, sizeof(received_bits));
+          memcpy(received_bits, bits, payload_len * sizeof(bool));
           received_len = payload_len;
           did_receive = 1;
           continue;
@@ -195,19 +195,23 @@ void *receive_loop(void *args) {
   return NULL;
 }
 
-size_t receive_frame(bool *const bits, suseconds_t *const timeout) {
+bool receive_frame(bool *const bits, const size_t len,
+                   suseconds_t *const timeout) {
   while (!did_receive) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
         *timeout -= PERIOD_USEC;
       } else {
         *timeout = -1;
-        return 0;
+        return false;
       }
     }
     usleep(PERIOD_USEC);
   }
   did_receive = 0;
-  memcpy(bits, received_bits, sizeof(received_bits));
-  return received_len;
+  if (received_len != len) {
+    return false;
+  }
+  memcpy(bits, received_bits, len * sizeof(bool));
+  return true;
 }
