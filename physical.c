@@ -14,8 +14,8 @@
 
 #define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 4
-#define PREAMBLE_LEN 320
-#define HALF_PREAMBLE_LEN 160
+#define PREAMBLE_LEN 160
+#define HALF_PREAMBLE_LEN 80
 
 int volume = 16384;
 bool has_ack = false;
@@ -105,7 +105,7 @@ static bool find_preamble(void) {
       product_half += preamble[i] * buf[HALF_PREAMBLE_LEN + i];
     }
     product_half /= (double)buf_sqr_sum / buf_abs_sum * PREAMBLE_LEN / 2;
-    if (product_half > 0.3 && product_half > max_product_half) {
+    if (product_half > 0.4 && product_half > max_product_half) {
       max_product_half = product_half;
       preamble_pos = 0;
     } else if (preamble_pos >= 0) {
