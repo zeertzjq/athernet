@@ -57,6 +57,13 @@ static void encode_bit(const bool bit) {
 
 void transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
+  if (has_ack) {
+    bool len_bits[8];
+    decompose_byte(len, len_bits);
+    for (int i = 0; i < 8; i++) {
+      encode_bit(len_bits[i]);
+    }
+  }
   for (int i = 0; i < len; i++) {
     encode_bit(bits[i]);
   }
@@ -128,8 +135,10 @@ void *receive_loop(void *args) {
   bool found_preamble = false;
   int16_t bit_buf[BIT_LEN];
   size_t bit_pos = 0;
-  bool bits[PHY_PAYLOAD_MAX];
+  bool len_bits[8];
+  size_t len_pos = 0;
   size_t payload_len = PHY_PAYLOAD_FIXED;
+  bool bits[PHY_PAYLOAD_MAX];
   size_t payload_pos = 0;
   bool crc_bits[8];
   size_t crc_pos = 0;
@@ -147,14 +156,28 @@ void *receive_loop(void *args) {
         read_pos = 0;
       }
       if (bit_pos == BIT_LEN) {
+        bit_pos = 0;
+        if (has_ack && len_pos < 8) {
+          len_bits[len_pos++] = decode_bit(bit_buf);
+          if (len_pos == 8) {
+            const uint8_t len = compose_byte(len_bits);
+            if (len > PHY_PAYLOAD_MAX) {
+              found_preamble = false;
+              len_pos = 0;
+            } else {
+              payload_len = len;
+            }
+          }
+          continue;
+        }
         if (payload_pos == payload_len) {
           crc_bits[crc_pos++] = decode_bit(bit_buf);
         } else {
           bits[payload_pos++] = decode_bit(bit_buf);
         }
-        bit_pos = 0;
         if (payload_pos == payload_len && crc_pos == 8) {
           found_preamble = false;
+          len_pos = 0;
           payload_pos = 0;
           crc_pos = 0;
           if (has_ack && crc8(bits, payload_len) != compose_byte(crc_bits)) {

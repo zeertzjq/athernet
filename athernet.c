@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  const size_t frame_len = has_ack ? PHY_PAYLOAD_MAX : PHY_PAYLOAD_FIXED;
+  const size_t frame_len = PHY_PAYLOAD_FIXED;
   int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
   int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
 
@@ -60,9 +60,9 @@ int main(int argc, char **argv) {
 
   if (transmit_bytes > 0 && receive_bytes == 0) {
     playback_start();
-    if (has_ack) {
-      pthread_create(&receive_thread, NULL, receive_loop, NULL);
-    }
+    // if (has_ack) {
+    //   pthread_create(&receive_thread, NULL, receive_loop, NULL);
+    // }
     while (--transmit_frames >= 0) {
       bool bits[PHY_PAYLOAD_MAX];
       input_frame(bits, frame_len);
@@ -75,27 +75,28 @@ int main(int argc, char **argv) {
         break;
       }
     }
-    if (has_ack) {
-      receive_stopped = 1;
-      pthread_join(receive_thread, NULL);
-    }
+    // if (has_ack) {
+    //   receive_stopped = 1;
+    //   pthread_join(receive_thread, NULL);
+    // }
     playback_stop();
   } else if (receive_bytes > 0 && transmit_bytes == 0) {
     pthread_create(&receive_thread, NULL, receive_loop, NULL);
-    if (has_ack) {
-      playback_start();
-    }
+    // if (has_ack) {
+    //   playback_start();
+    // }
     while (--receive_frames >= 0) {
       bool bits[PHY_PAYLOAD_MAX];
-      receive_frame(bits, NULL);
-      if (has_ack) {
-        // transmit_ack();
+      while (receive_frame(bits, NULL) != frame_len) {
       }
+      // if (has_ack) {
+      //   transmit_ack();
+      // }
       output_frame(bits, frame_len);
     }
-    if (has_ack) {
-      playback_stop();
-    }
+    // if (has_ack) {
+    //   playback_stop();
+    // }
     receive_stopped = 1;
     pthread_join(receive_thread, NULL);
   } else {
