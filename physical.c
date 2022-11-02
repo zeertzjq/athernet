@@ -13,7 +13,7 @@
 #include "physical.h"
 
 #define PERIOD_USEC (1000000 / RATE)
-#define BIT_LEN 4
+#define BIT_LEN 3
 #define PREAMBLE_LEN 160
 #define HALF_PREAMBLE_LEN 80
 
@@ -21,7 +21,7 @@ int volume = 16384;
 bool has_ack = false;
 volatile sig_atomic_t receive_stopped = 0;
 
-static const int carrier[BIT_LEN] = {1, 1, -1, 1};
+static const int carrier[BIT_LEN] = {1, 1, -1};
 static double preamble[PREAMBLE_LEN];
 static int16_t playback_buf[RATE];
 static size_t playback_len = 0;
