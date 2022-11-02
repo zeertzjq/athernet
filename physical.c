@@ -79,8 +79,7 @@ static int16_t capture_buf[PREAMBLE_LEN * 2];
 static int16_t read_pos = 0;
 static int16_t read_end = 0;
 static bool received_bits[PHY_PAYLOAD_MAX];
-static size_t received_len = 0;
-static volatile sig_atomic_t did_receive = 0;
+static volatile sig_atomic_t received_len = -1;
 
 static int64_t sqr(const int64_t x) { return x * x; }
 
@@ -185,7 +184,6 @@ void *receive_loop(void *args) {
           }
           memcpy(received_bits, bits, payload_len * sizeof(bool));
           received_len = payload_len;
-          did_receive = 1;
           continue;
         }
       }
@@ -195,23 +193,19 @@ void *receive_loop(void *args) {
   return NULL;
 }
 
-bool receive_frame(bool *const bits, const size_t len,
+void receive_frame(bool *const bits, const size_t len,
                    suseconds_t *const timeout) {
-  while (!did_receive) {
+  while (received_len != len) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
         *timeout -= PERIOD_USEC;
       } else {
         *timeout = -1;
-        return false;
+        return;
       }
     }
     usleep(PERIOD_USEC);
   }
-  did_receive = 0;
-  if (received_len != len) {
-    return false;
-  }
+  received_len = -1;
   memcpy(bits, received_bits, len * sizeof(bool));
-  return true;
 }

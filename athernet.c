@@ -55,30 +55,33 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  const size_t frame_len = has_ack ? PHY_PAYLOAD_MAX : PHY_PAYLOAD_FIXED;
-  const int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
-  const int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
+  const size_t payload_len = has_ack ? 240 : PHY_PAYLOAD_FIXED;
+  const size_t frame_len = has_ack ? payload_len + 8 : payload_len;
+  const int transmit_cnt = (transmit_bytes * 8 + payload_len - 1) / payload_len;
+  const int receive_cnt = (receive_bytes * 8 + payload_len - 1) / payload_len;
 
   phy_init();
   pthread_t receive_thread;
 
-  if (transmit_frames > 0 && receive_frames == 0) {
+  if (transmit_cnt > 0 && receive_cnt == 0) {
     playback_start();
     if (has_ack) {
       pthread_create(&receive_thread, NULL, receive_loop, NULL);
     }
-    for (int i = 0; i < transmit_frames; i++) {
+    for (int i = 0; i < transmit_cnt; i++) {
+      const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
-      input_frame(bits, frame_len);
+      input_frame(bits, payload_len);
+      if (has_ack) {
+        decompose_byte(ack_num, bits + payload_len);
+      }
       int num_retries = 5;
       do {
         transmit_frame(bits, frame_len);
         if (has_ack) {
-          const uint8_t ack_num = i & 0xFF;
           suseconds_t timeout = 50000;
           bool ack_bits[8];
-          while (!receive_frame(ack_bits, 8, &timeout) && timeout >= 0) {
-          }
+          receive_frame(ack_bits, 8, &timeout);
           if (timeout >= 0 && compose_byte(ack_bits) == ack_num) {
             break;
           }
@@ -94,22 +97,21 @@ int main(int argc, char **argv) {
       pthread_join(receive_thread, NULL);
     }
     playback_stop();
-  } else if (receive_frames > 0 && transmit_frames == 0) {
+  } else if (receive_cnt > 0 && transmit_cnt == 0) {
     pthread_create(&receive_thread, NULL, receive_loop, NULL);
     if (has_ack) {
       playback_start();
     }
-    for (int i = 0; i < receive_frames; i++) {
+    for (int i = 0; i < receive_cnt; i++) {
+      const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
-      while (!receive_frame(bits, frame_len, NULL)) {
-      }
-      if (has_ack) {
-        const uint8_t ack_num = i & 0xFF;
-        bool ack_bits[8];
-        decompose_byte(ack_num, ack_bits);
-        transmit_frame(ack_bits, 8);
-      }
-      output_frame(bits, frame_len);
+      do {
+        receive_frame(bits, frame_len, NULL);
+        if (has_ack) {
+          transmit_frame(bits + payload_len, 8);
+        }
+      } while (has_ack && compose_byte(bits + payload_len) != ack_num);
+      output_frame(bits, payload_len);
     }
     if (has_ack) {
       playback_stop();
