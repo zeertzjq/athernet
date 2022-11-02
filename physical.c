@@ -10,6 +10,7 @@
 
 #include "backend.h"
 #include "common.h"
+#include "physical.h"
 
 #define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 4
@@ -18,7 +19,7 @@
 
 int volume = 16384;
 bool has_ack = false;
-sig_atomic_t receive_stopped = 0;
+volatile sig_atomic_t receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1, 1};
 static double preamble[PREAMBLE_LEN];
@@ -35,9 +36,9 @@ void phy_init(void) {
   }
 }
 
-static uint8_t crc8(const bool *const bits) {
+static uint8_t crc8(const bool *const bits, const size_t len) {
   uint8_t remainder = 0;
-  for (int i = 0; i < FRAME_BITS; i++) {
+  for (int i = 0; i < len; i++) {
     if (remainder & 0x80) {
       remainder = (remainder << 1) ^ 0x39;
     } else {
@@ -54,13 +55,13 @@ static void encode_bit(const bool bit) {
   }
 }
 
-void transmit_frame(const bool *const bits) {
+void transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
-  for (int i = 0; i < FRAME_BITS; i++) {
+  for (int i = 0; i < len; i++) {
     encode_bit(bits[i]);
   }
   bool crc_bits[8];
-  decompose_byte(crc8(bits), crc_bits);
+  decompose_byte(crc8(bits, len), crc_bits);
   for (int i = 0; i < 8; i++) {
     encode_bit(crc_bits[i]);
   }
@@ -70,8 +71,9 @@ void transmit_frame(const bool *const bits) {
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static int16_t read_pos = 0;
 static int16_t read_end = 0;
-static bool received_bits[FRAME_BITS];
-static sig_atomic_t did_receive = 0;
+static bool received_bits[PHY_PAYLOAD_MAX];
+static size_t received_len = 0;
+static volatile sig_atomic_t did_receive = 0;
 
 static int64_t sqr(const int64_t x) { return x * x; }
 
@@ -126,8 +128,9 @@ void *receive_loop(void *args) {
   bool found_preamble = false;
   int16_t bit_buf[BIT_LEN];
   size_t bit_pos = 0;
-  bool bits[FRAME_BITS];
-  size_t frame_pos = 0;
+  bool bits[PHY_PAYLOAD_MAX];
+  size_t payload_len = PHY_PAYLOAD_FIXED;
+  size_t payload_pos = 0;
   bool crc_bits[8];
   size_t crc_pos = 0;
   capture_start();
@@ -144,20 +147,21 @@ void *receive_loop(void *args) {
         read_pos = 0;
       }
       if (bit_pos == BIT_LEN) {
-        if (frame_pos == FRAME_BITS) {
+        if (payload_pos == payload_len) {
           crc_bits[crc_pos++] = decode_bit(bit_buf);
         } else {
-          bits[frame_pos++] = decode_bit(bit_buf);
+          bits[payload_pos++] = decode_bit(bit_buf);
         }
         bit_pos = 0;
-        if (frame_pos == FRAME_BITS && crc_pos == 8) {
+        if (payload_pos == payload_len && crc_pos == 8) {
           found_preamble = false;
-          frame_pos = 0;
+          payload_pos = 0;
           crc_pos = 0;
-          if (has_ack && crc8(bits) != compose_byte(crc_bits)) {
+          if (has_ack && crc8(bits, payload_len) != compose_byte(crc_bits)) {
             continue;
           }
           memcpy(received_bits, bits, sizeof(received_bits));
+          received_len = payload_len;
           did_receive = 1;
           continue;
         }
@@ -168,18 +172,19 @@ void *receive_loop(void *args) {
   return NULL;
 }
 
-void receive_frame(bool *const bits, suseconds_t *const timeout) {
+size_t receive_frame(bool *const bits, suseconds_t *const timeout) {
   while (!did_receive) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
         *timeout -= PERIOD_USEC;
       } else {
         *timeout = -1;
-        return;
+        return 0;
       }
     }
     usleep(PERIOD_USEC);
   }
-  memcpy(bits, received_bits, sizeof(received_bits));
   did_receive = 0;
+  memcpy(bits, received_bits, sizeof(received_bits));
+  return received_len;
 }

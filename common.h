@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 #define RATE 48000
-#define FRAME_BITS 200
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 

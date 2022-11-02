@@ -9,14 +9,14 @@
 #include "common.h"
 #include "physical.h"
 
-static void input_frame(bool *const bits) {
-  for (int i = 0; i < FRAME_BITS; i += 8) {
+static void input_frame(bool *const bits, const size_t len) {
+  for (int i = 0; i < len; i += 8) {
     decompose_byte(getchar(), bits + i);
   }
 }
 
-static void output_frame(const bool *const bits) {
-  for (int i = 0; i < FRAME_BITS; i += 8) {
+static void output_frame(const bool *const bits, const size_t len) {
+  for (int i = 0; i < len; i += 8) {
     putchar(compose_byte(bits + i));
   }
   fflush(stdout);
@@ -51,8 +51,9 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int transmit_frames = (transmit_bytes * 8 + FRAME_BITS - 1) / FRAME_BITS;
-  int receive_frames = (receive_bytes * 8 + FRAME_BITS - 1) / FRAME_BITS;
+  const size_t frame_len = has_ack ? PHY_PAYLOAD_MAX : PHY_PAYLOAD_FIXED;
+  int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
+  int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
 
   phy_init();
   pthread_t receive_thread;
@@ -63,11 +64,11 @@ int main(int argc, char **argv) {
       pthread_create(&receive_thread, NULL, receive_loop, NULL);
     }
     while (--transmit_frames >= 0) {
-      bool bits[FRAME_BITS];
-      input_frame(bits);
+      bool bits[PHY_PAYLOAD_MAX];
+      input_frame(bits, frame_len);
       int num_retries = 10;
       // do {
-      transmit_frame(bits);
+      transmit_frame(bits, frame_len);
       // } while (has_ack && !receive_ack(50000) && --num_retries >= 0);
       if (num_retries < 0) {
         fprintf(stderr, "link error\n");
@@ -85,12 +86,12 @@ int main(int argc, char **argv) {
       playback_start();
     }
     while (--receive_frames >= 0) {
-      bool bits[FRAME_BITS];
+      bool bits[PHY_PAYLOAD_MAX];
       receive_frame(bits, NULL);
       if (has_ack) {
         // transmit_ack();
       }
-      output_frame(bits);
+      output_frame(bits, frame_len);
     }
     if (has_ack) {
       playback_stop();
