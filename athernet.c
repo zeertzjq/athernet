@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  const size_t payload_len = has_ack ? 240 : PHY_PAYLOAD_FIXED;
+  const size_t payload_len = has_ack ? 480 : PHY_PAYLOAD_FIXED;
   const size_t frame_len = has_ack ? payload_len + 8 : payload_len;
   const int transmit_cnt = (transmit_bytes * 8 + payload_len - 1) / payload_len;
   const int receive_cnt = (receive_bytes * 8 + payload_len - 1) / payload_len;

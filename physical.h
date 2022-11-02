@@ -7,7 +7,7 @@
 #include <sys/types.h>
 
 #define PHY_PAYLOAD_FIXED 200
-#define PHY_PAYLOAD_MAX 250
+#define PHY_PAYLOAD_MAX 500
 
 extern int volume;
 extern bool has_ack;

@@ -59,7 +59,7 @@ void transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
     bool len_bits[8];
-    decompose_byte(len, len_bits);
+    decompose_byte(len >> 1, len_bits);
     for (int i = 0; i < 8; i++) {
       encode_bit(len_bits[i]);
     }
@@ -159,7 +159,7 @@ void *receive_loop(void *args) {
         if (has_ack && len_pos < 8) {
           len_bits[len_pos++] = decode_bit(bit_buf);
           if (len_pos == 8) {
-            const uint8_t len = compose_byte(len_bits);
+            const size_t len = compose_byte(len_bits) << 1;
             if (len > PHY_PAYLOAD_MAX) {
               found_preamble = false;
               len_pos = 0;
