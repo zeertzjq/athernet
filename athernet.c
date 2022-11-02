@@ -9,23 +9,27 @@
 #include "common.h"
 #include "physical.h"
 
+static int transmit_bytes = 0;
+static int receive_bytes = 0;
+
 static void input_frame(bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
-    decompose_byte(getchar(), bits + i);
+    if (--transmit_bytes >= 0) {
+      decompose_byte(getchar(), bits + i);
+    }
   }
 }
 
 static void output_frame(const bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
-    putchar(compose_byte(bits + i));
+    if (--receive_bytes >= 0) {
+      putchar(compose_byte(bits + i));
+    }
   }
   fflush(stdout);
 }
 
 int main(int argc, char **argv) {
-  int transmit_bytes = 0;
-  int receive_bytes = 0;
-
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--ack") == 0) {
       has_ack = true;
@@ -51,14 +55,14 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  const size_t frame_len = PHY_PAYLOAD_FIXED;
+  const size_t frame_len = has_ack ? PHY_PAYLOAD_MAX : PHY_PAYLOAD_FIXED;
   const int transmit_frames = (transmit_bytes * 8 + frame_len - 1) / frame_len;
   const int receive_frames = (receive_bytes * 8 + frame_len - 1) / frame_len;
 
   phy_init();
   pthread_t receive_thread;
 
-  if (transmit_bytes > 0 && receive_bytes == 0) {
+  if (transmit_frames > 0 && receive_frames == 0) {
     playback_start();
     if (has_ack) {
       pthread_create(&receive_thread, NULL, receive_loop, NULL);
@@ -90,7 +94,7 @@ int main(int argc, char **argv) {
       pthread_join(receive_thread, NULL);
     }
     playback_stop();
-  } else if (receive_bytes > 0 && transmit_bytes == 0) {
+  } else if (receive_frames > 0 && transmit_frames == 0) {
     pthread_create(&receive_thread, NULL, receive_loop, NULL);
     if (has_ack) {
       playback_start();
