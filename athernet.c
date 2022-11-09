@@ -70,14 +70,14 @@ int main(int argc, char **argv) {
       for (int i = 0; i < transmit_cnt; i++) {
         bool bits[PHY_PAYLOAD_FIXED];
         input_frame(bits, payload_len);
-        transmit_frame(bits, payload_len);
+        phy_transmit_frame(bits, payload_len);
       }
       playback_stop();
     } else if (receive_cnt > 0 && transmit_cnt == 0) {
-      pthread_create(&receive_thread, NULL, receive_loop, NULL);
+      pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
       for (int i = 0; i < receive_cnt; i++) {
         bool bits[PHY_PAYLOAD_MAX];
-        receive_frame(bits, payload_len, NULL);
+        phy_receive_frame(bits, payload_len, NULL);
         output_frame(bits, payload_len);
       }
       receive_stopped = 1;
@@ -87,10 +87,10 @@ int main(int argc, char **argv) {
   }
 
   const size_t frame_len = payload_len + 8;
+  pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
+  playback_start();
 
   if (transmit_cnt > 0 && receive_cnt == 0) {
-    playback_start();
-    pthread_create(&receive_thread, NULL, receive_loop, NULL);
     for (int i = 0; i < transmit_cnt; i++) {
       const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
@@ -98,10 +98,10 @@ int main(int argc, char **argv) {
       decompose_byte(ack_num, bits + payload_len);
       int num_retries = 5;
       do {
-        transmit_frame(bits, frame_len);
+        phy_transmit_frame(bits, frame_len);
         suseconds_t timeout = 50000;
         bool ack_bits[8];
-        receive_frame(ack_bits, 8, &timeout);
+        phy_receive_frame(ack_bits, 8, &timeout);
         if (timeout >= 0 && compose_byte(ack_bits) == ack_num) {
           break;
         }
@@ -111,28 +111,24 @@ int main(int argc, char **argv) {
         break;
       }
     }
-    receive_stopped = 1;
-    pthread_join(receive_thread, NULL);
-    playback_stop();
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
-    pthread_create(&receive_thread, NULL, receive_loop, NULL);
-    playback_start();
     for (int i = 0; i < receive_cnt; i++) {
       const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
       do {
-        receive_frame(bits, frame_len, NULL);
-        transmit_frame(bits + payload_len, 8);
+        phy_receive_frame(bits, frame_len, NULL);
+        phy_transmit_frame(bits + payload_len, 8);
       } while (compose_byte(bits + payload_len) != ack_num);
       output_frame(bits, payload_len);
     }
-    playback_stop();
-    receive_stopped = 1;
-    pthread_join(receive_thread, NULL);
   } else {
     fprintf(stderr, "CSMA not implemented yet\n");
     return EXIT_FAILURE;
   }
+
+  receive_stopped = 1;
+  playback_stop();
+  pthread_join(receive_thread, NULL);
 
   return EXIT_SUCCESS;
 }

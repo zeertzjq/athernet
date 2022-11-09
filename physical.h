@@ -14,8 +14,8 @@ extern bool has_ack;
 extern volatile sig_atomic_t receive_stopped;
 
 void phy_init(void);
-void transmit_frame(const bool *bits, size_t len);
-void *receive_loop(void *args);
-void receive_frame(bool *bits, size_t len, suseconds_t *timeout);
+void phy_transmit_frame(const bool *bits, size_t len);
+void *phy_receive_loop(void *args);
+void phy_receive_frame(bool *bits, size_t len, suseconds_t *timeout);
 
 #endif // ATNET_PHYSICAL_H

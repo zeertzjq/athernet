@@ -55,7 +55,7 @@ static void encode_bit(const bool bit) {
   }
 }
 
-void transmit_frame(const bool *const bits, const size_t len) {
+void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
     bool len_bits[8];
@@ -130,7 +130,7 @@ static bool decode_bit(const int16_t *const buf) {
   return product > 0;
 }
 
-void *receive_loop(void *args) {
+void *phy_receive_loop(void *args) {
   bool found_preamble = false;
   int16_t bit_buf[BIT_LEN];
   size_t bit_pos = 0;
@@ -193,8 +193,8 @@ void *receive_loop(void *args) {
   return NULL;
 }
 
-void receive_frame(bool *const bits, const size_t len,
-                   suseconds_t *const timeout) {
+void phy_receive_frame(bool *const bits, const size_t len,
+                       suseconds_t *const timeout) {
   while (received_len != len) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
