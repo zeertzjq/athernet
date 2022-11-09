@@ -78,8 +78,8 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
 }
 
 static int16_t capture_buf[PREAMBLE_LEN * 2];
-static int16_t read_pos = 0;
-static int16_t read_end = 0;
+static size_t read_pos = 0;
+static size_t read_end = 0;
 static bool received_bits[PHY_PAYLOAD_MAX];
 static volatile sig_atomic_t received_len = -1;
 
