@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
   playback_start();
 
   if (transmit_cnt > 0 && receive_cnt == 0) {
-    for (int i = 0; i < transmit_cnt; i++) {
+    for (int i = 0; i <= transmit_cnt; i++) {
       if (transmit_bytes * 8 < payload_len) {
         payload_len = transmit_bytes * 8;
       }
@@ -124,13 +124,13 @@ int main(int argc, char **argv) {
           break;
         }
       } while (--num_retries >= 0);
-      if (num_retries < 0) {
+      if (num_retries < 0 && payload_len > 0) {
         fprintf(stderr, "link error\n");
         break;
       }
     }
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
-    for (int i = 0; i < receive_cnt; i++) {
+    for (int i = 0; i <= receive_cnt; i++) {
       const uint16_t data_header_want = (FRAME_DATA << 4) | (i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
       for (;;) {
