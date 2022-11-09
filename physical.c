@@ -14,7 +14,7 @@
 
 #define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 3
-#define LEN_BITS 8
+#define LEN_BITS 16
 #define CRC_BITS 8
 #define PREAMBLE_LEN 160
 #define HALF_PREAMBLE_LEN 80
@@ -61,7 +61,7 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
     bool len_bits[LEN_BITS];
-    decompose_u8(len >> 1, len_bits);
+    decompose_u16(len, len_bits);
     for (int i = 0; i < LEN_BITS; i++) {
       encode_bit(len_bits[i]);
     }
@@ -161,7 +161,7 @@ void *phy_receive_loop(void *args) {
         if (has_ack && len_pos < LEN_BITS) {
           len_bits[len_pos++] = decode_bit(bit_buf);
           if (len_pos == LEN_BITS) {
-            const size_t len = compose_u8(len_bits) << 1;
+            const size_t len = compose_u16(len_bits);
             if (len > PHY_PAYLOAD_MAX) {
               found_preamble = false;
               len_pos = 0;

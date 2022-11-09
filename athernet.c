@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   if (transmit_bytes > 0 && receive_bytes > 0) {
     has_ack = true;
   }
-  const size_t payload_len = has_ack ? 480 : PHY_PAYLOAD_FIXED;
+  const size_t payload_len = has_ack ? 800 : PHY_PAYLOAD_FIXED;
   const int transmit_cnt = (transmit_bytes * 8 + payload_len - 1) / payload_len;
   const int receive_cnt = (receive_bytes * 8 + payload_len - 1) / payload_len;
 
