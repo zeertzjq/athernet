@@ -59,7 +59,7 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
     bool len_bits[8];
-    decompose_byte(len >> 1, len_bits);
+    decompose_u8(len >> 1, len_bits);
     for (int i = 0; i < 8; i++) {
       encode_bit(len_bits[i]);
     }
@@ -68,7 +68,7 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
     encode_bit(bits[i]);
   }
   bool crc_bits[8];
-  decompose_byte(crc8(bits, len), crc_bits);
+  decompose_u8(crc8(bits, len), crc_bits);
   for (int i = 0; i < 8; i++) {
     encode_bit(crc_bits[i]);
   }
@@ -159,7 +159,7 @@ void *phy_receive_loop(void *args) {
         if (has_ack && len_pos < 8) {
           len_bits[len_pos++] = decode_bit(bit_buf);
           if (len_pos == 8) {
-            const size_t len = compose_byte(len_bits) << 1;
+            const size_t len = compose_u8(len_bits) << 1;
             if (len > PHY_PAYLOAD_MAX) {
               found_preamble = false;
               len_pos = 0;
@@ -179,7 +179,7 @@ void *phy_receive_loop(void *args) {
           len_pos = 0;
           payload_pos = 0;
           crc_pos = 0;
-          if (has_ack && crc8(bits, payload_len) != compose_byte(crc_bits)) {
+          if (has_ack && crc8(bits, payload_len) != compose_u8(crc_bits)) {
             continue;
           }
           memcpy(received_bits, bits, payload_len * sizeof(bool));

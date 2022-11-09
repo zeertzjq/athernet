@@ -9,7 +9,7 @@
 #include "common.h"
 #include "physical.h"
 
-#define MAC_HEADER_LEN 8
+#define MAC_HEADER_LEN 16
 
 static int transmit_bytes = 0;
 static int receive_bytes = 0;
@@ -17,7 +17,7 @@ static int receive_bytes = 0;
 static void input_frame(bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
     if (--transmit_bytes >= 0) {
-      decompose_byte(getchar(), bits + i);
+      decompose_u8(getchar(), bits + i);
     }
   }
 }
@@ -25,7 +25,7 @@ static void input_frame(bool *const bits, const size_t len) {
 static void output_frame(const bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
     if (--receive_bytes >= 0) {
-      putchar(compose_byte(bits + i));
+      putchar(compose_u8(bits + i));
     }
   }
   fflush(stdout);
@@ -87,6 +87,10 @@ int main(int argc, char **argv) {
     }
     return EXIT_SUCCESS;
   }
+  enum {
+    FRAME_DATA = 0,
+    FRAME_ACK = 1,
+  };
 
   const size_t frame_len = payload_len + MAC_HEADER_LEN;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
@@ -94,9 +98,10 @@ int main(int argc, char **argv) {
 
   if (transmit_cnt > 0 && receive_cnt == 0) {
     for (int i = 0; i < transmit_cnt; i++) {
-      const uint8_t ack_num = i & 0xFF;
+      const uint16_t data_header = (FRAME_DATA << 4) | (i & 0xF);
+      const uint16_t ack_header = (FRAME_ACK << 4) | (i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
-      decompose_byte(ack_num, bits);
+      decompose_u16(data_header, bits);
       input_frame(bits + MAC_HEADER_LEN, payload_len);
       int num_retries = 5;
       do {
@@ -104,7 +109,7 @@ int main(int argc, char **argv) {
         suseconds_t timeout = 50000;
         bool ack_bits[MAC_HEADER_LEN];
         phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
-        if (timeout >= 0 && compose_byte(ack_bits) == ack_num) {
+        if (timeout >= 0 && compose_u16(ack_bits) == ack_header) {
           break;
         }
       } while (--num_retries >= 0);
@@ -115,12 +120,18 @@ int main(int argc, char **argv) {
     }
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
     for (int i = 0; i < receive_cnt; i++) {
-      const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
-      do {
+      for (;;) {
         phy_receive_frame(bits, frame_len, NULL);
-        phy_transmit_frame(bits, MAC_HEADER_LEN);
-      } while (compose_byte(bits) != ack_num);
+        const uint16_t data_header = compose_u16(bits);
+        const uint16_t ack_header = (FRAME_ACK << 4) | (data_header & 0xF);
+        bool ack_bits[MAC_HEADER_LEN];
+        decompose_u16(ack_header, ack_bits);
+        phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+        if (data_header == ((FRAME_DATA << 4) | (i & 0xF))) {
+          break;
+        }
+      }
       output_frame(bits + MAC_HEADER_LEN, payload_len);
     }
   } else {

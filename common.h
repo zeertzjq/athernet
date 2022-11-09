@@ -8,17 +8,31 @@
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
 
-static inline uint8_t compose_byte(const bool *const bits) {
-  uint8_t byte = 0;
+static inline uint8_t compose_u8(const bool *const bits) {
+  uint8_t num = 0;
   for (int i = 0; i < 8; i++) {
-    byte |= bits[i] << i;
+    num |= bits[i] << i;
   }
-  return byte;
+  return num;
 }
 
-static inline void decompose_byte(const uint8_t byte, bool *const bits) {
+static inline void decompose_u8(const uint8_t num, bool *const bits) {
   for (int i = 0; i < 8; i++) {
-    bits[i] = byte & (1 << i);
+    bits[i] = num & (1 << i);
+  }
+}
+
+static inline uint16_t compose_u16(const bool *const bits) {
+  uint16_t num = 0;
+  for (int i = 0; i < 16; i++) {
+    num |= bits[i] << i;
+  }
+  return num;
+}
+
+static inline void decompose_u16(const uint16_t num, bool *const bits) {
+  for (int i = 0; i < 16; i++) {
+    bits[i] = num & (1 << i);
   }
 }
 
