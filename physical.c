@@ -14,6 +14,8 @@
 
 #define PERIOD_USEC (1000000 / RATE)
 #define BIT_LEN 3
+#define LEN_BITS 8
+#define CRC_BITS 8
 #define PREAMBLE_LEN 160
 #define HALF_PREAMBLE_LEN 80
 
@@ -58,18 +60,18 @@ static void encode_bit(const bool bit) {
 void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
-    bool len_bits[8];
+    bool len_bits[LEN_BITS];
     decompose_u8(len >> 1, len_bits);
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < LEN_BITS; i++) {
       encode_bit(len_bits[i]);
     }
   }
   for (int i = 0; i < len; i++) {
     encode_bit(bits[i]);
   }
-  bool crc_bits[8];
+  bool crc_bits[CRC_BITS];
   decompose_u8(crc8(bits, len), crc_bits);
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < CRC_BITS; i++) {
     encode_bit(crc_bits[i]);
   }
   playback_write(playback_buf, playback_len);
@@ -134,12 +136,12 @@ void *phy_receive_loop(void *args) {
   bool found_preamble = false;
   int16_t bit_buf[BIT_LEN];
   size_t bit_pos = 0;
-  bool len_bits[8];
+  bool len_bits[LEN_BITS];
   size_t len_pos = 0;
   size_t payload_len = PHY_PAYLOAD_FIXED;
   bool bits[PHY_PAYLOAD_MAX];
   size_t payload_pos = 0;
-  bool crc_bits[8];
+  bool crc_bits[CRC_BITS];
   size_t crc_pos = 0;
   capture_start();
   while (!receive_stopped) {
@@ -156,9 +158,9 @@ void *phy_receive_loop(void *args) {
       }
       if (bit_pos == BIT_LEN) {
         bit_pos = 0;
-        if (has_ack && len_pos < 8) {
+        if (has_ack && len_pos < LEN_BITS) {
           len_bits[len_pos++] = decode_bit(bit_buf);
-          if (len_pos == 8) {
+          if (len_pos == LEN_BITS) {
             const size_t len = compose_u8(len_bits) << 1;
             if (len > PHY_PAYLOAD_MAX) {
               found_preamble = false;
@@ -174,7 +176,7 @@ void *phy_receive_loop(void *args) {
         } else {
           bits[payload_pos++] = decode_bit(bit_buf);
         }
-        if (payload_pos == payload_len && crc_pos == 8) {
+        if (payload_pos == payload_len && crc_pos == CRC_BITS) {
           found_preamble = false;
           len_pos = 0;
           payload_pos = 0;
