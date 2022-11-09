@@ -9,6 +9,8 @@
 #include "common.h"
 #include "physical.h"
 
+#define MAC_HEADER_LEN 8
+
 static int transmit_bytes = 0;
 static int receive_bytes = 0;
 
@@ -86,7 +88,7 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
   }
 
-  const size_t frame_len = payload_len + 8;
+  const size_t frame_len = payload_len + MAC_HEADER_LEN;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
@@ -94,14 +96,14 @@ int main(int argc, char **argv) {
     for (int i = 0; i < transmit_cnt; i++) {
       const uint8_t ack_num = i & 0xFF;
       bool bits[PHY_PAYLOAD_MAX];
-      input_frame(bits, payload_len);
-      decompose_byte(ack_num, bits + payload_len);
+      decompose_byte(ack_num, bits);
+      input_frame(bits + MAC_HEADER_LEN, payload_len);
       int num_retries = 5;
       do {
         phy_transmit_frame(bits, frame_len);
         suseconds_t timeout = 50000;
-        bool ack_bits[8];
-        phy_receive_frame(ack_bits, 8, &timeout);
+        bool ack_bits[MAC_HEADER_LEN];
+        phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
         if (timeout >= 0 && compose_byte(ack_bits) == ack_num) {
           break;
         }
@@ -117,9 +119,9 @@ int main(int argc, char **argv) {
       bool bits[PHY_PAYLOAD_MAX];
       do {
         phy_receive_frame(bits, frame_len, NULL);
-        phy_transmit_frame(bits + payload_len, 8);
-      } while (compose_byte(bits + payload_len) != ack_num);
-      output_frame(bits, payload_len);
+        phy_transmit_frame(bits, MAC_HEADER_LEN);
+      } while (compose_byte(bits) != ack_num);
+      output_frame(bits + MAC_HEADER_LEN, payload_len);
     }
   } else {
     fprintf(stderr, "CSMA not implemented yet\n");
