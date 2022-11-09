@@ -1,6 +1,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
   if (transmit_bytes > 0 && receive_bytes > 0) {
     has_ack = true;
   }
-  const size_t payload_len = has_ack ? 800 : PHY_PAYLOAD_FIXED;
+  size_t payload_len = has_ack ? 800 : PHY_PAYLOAD_FIXED;
   const int transmit_cnt = (transmit_bytes * 8 + payload_len - 1) / payload_len;
   const int receive_cnt = (receive_bytes * 8 + payload_len - 1) / payload_len;
 
@@ -71,45 +72,55 @@ int main(int argc, char **argv) {
       playback_start();
       for (int i = 0; i < transmit_cnt; i++) {
         bool bits[PHY_PAYLOAD_FIXED];
-        input_frame(bits, payload_len);
-        phy_transmit_frame(bits, payload_len);
+        input_frame(bits, PHY_PAYLOAD_FIXED);
+        phy_transmit_frame(bits, PHY_PAYLOAD_FIXED);
       }
       playback_stop();
     } else if (receive_cnt > 0 && transmit_cnt == 0) {
       pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
       for (int i = 0; i < receive_cnt; i++) {
-        bool bits[PHY_PAYLOAD_MAX];
-        phy_receive_frame(bits, payload_len, NULL);
-        output_frame(bits, payload_len);
+        bool bits[PHY_PAYLOAD_FIXED];
+        phy_receive_frame(bits, PHY_PAYLOAD_FIXED, NULL);
+        output_frame(bits, PHY_PAYLOAD_FIXED);
       }
       receive_stopped = 1;
       pthread_join(receive_thread, NULL);
     }
     return EXIT_SUCCESS;
   }
+
   enum {
     FRAME_DATA = 0,
     FRAME_ACK = 1,
   };
 
-  const size_t frame_len = payload_len + MAC_HEADER_LEN;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
   if (transmit_cnt > 0 && receive_cnt == 0) {
     for (int i = 0; i < transmit_cnt; i++) {
+      if (transmit_bytes * 8 < payload_len) {
+        payload_len = transmit_bytes * 8;
+      }
       const uint16_t data_header = (FRAME_DATA << 4) | (i & 0xF);
-      const uint16_t ack_header = (FRAME_ACK << 4) | (i & 0xF);
+      const uint16_t ack_header_want = (FRAME_ACK << 4) | (i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
       decompose_u16(data_header, bits);
       input_frame(bits + MAC_HEADER_LEN, payload_len);
       int num_retries = 5;
       do {
-        phy_transmit_frame(bits, frame_len);
+        phy_transmit_frame(bits, MAC_HEADER_LEN + payload_len);
         suseconds_t timeout = 50000;
-        bool ack_bits[MAC_HEADER_LEN];
-        phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
-        if (timeout >= 0 && compose_u16(ack_bits) == ack_header) {
+        uint16_t ack_header_got;
+        do {
+          bool ack_bits[MAC_HEADER_LEN];
+          phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
+          if (timeout < 0) {
+            break;
+          }
+          ack_header_got = compose_u16(ack_bits);
+        } while ((ack_header_got & 0xF0) != (FRAME_ACK << 4));
+        if (timeout >= 0 && ack_header_got == ack_header_want) {
           break;
         }
       } while (--num_retries >= 0);
@@ -120,15 +131,20 @@ int main(int argc, char **argv) {
     }
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
     for (int i = 0; i < receive_cnt; i++) {
+      const uint16_t data_header_want = (FRAME_DATA << 4) | (i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
       for (;;) {
-        phy_receive_frame(bits, frame_len, NULL);
-        const uint16_t data_header = compose_u16(bits);
-        const uint16_t ack_header = (FRAME_ACK << 4) | (data_header & 0xF);
+        uint16_t data_header_got;
+        do {
+          const size_t len = phy_receive_frame(bits, PHY_PAYLOAD_MAX, NULL);
+          payload_len = len - MAC_HEADER_LEN;
+          data_header_got = compose_u16(bits);
+        } while ((data_header_got & 0xF0) != (FRAME_DATA << 4));
+        const uint16_t ack_header = (FRAME_ACK << 4) | (data_header_got & 0xF);
         bool ack_bits[MAC_HEADER_LEN];
         decompose_u16(ack_header, ack_bits);
         phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
-        if (data_header == ((FRAME_DATA << 4) | (i & 0xF))) {
+        if (data_header_got == data_header_want) {
           break;
         }
       }

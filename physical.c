@@ -195,19 +195,22 @@ void *phy_receive_loop(void *args) {
   return NULL;
 }
 
-void phy_receive_frame(bool *const bits, const size_t len,
-                       suseconds_t *const timeout) {
-  while (received_len != len) {
+size_t phy_receive_frame(bool *const bits, const size_t max_len,
+                         suseconds_t *const timeout) {
+  size_t frame_len = received_len;
+  while (frame_len < 0 || frame_len > max_len) {
     if (timeout != NULL) {
       if (*timeout >= PERIOD_USEC) {
         *timeout -= PERIOD_USEC;
       } else {
         *timeout = -1;
-        return;
+        return 0;
       }
     }
     usleep(PERIOD_USEC);
+    frame_len = received_len;
   }
   received_len = -1;
-  memcpy(bits, received_bits, len * sizeof(bool));
+  memcpy(bits, received_bits, frame_len * sizeof(bool));
+  return frame_len;
 }
