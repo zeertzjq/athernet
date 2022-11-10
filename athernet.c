@@ -11,9 +11,13 @@
 #include "physical.h"
 
 #define MAC_HEADER_LEN 16
+#define MAC_HEADER(dest, src, type, seq)                                       \
+  (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
 
 static int transmit_bytes = 0;
 static int receive_bytes = 0;
+static int addr_self = 7;
+static int addr_other = 13;
 
 static void input_frame(bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
@@ -102,8 +106,10 @@ int main(int argc, char **argv) {
       if (transmit_bytes * 8 < payload_len) {
         payload_len = transmit_bytes * 8;
       }
-      const uint16_t data_header = (FRAME_DATA << 4) | (i & 0xF);
-      const uint16_t ack_header_want = (FRAME_ACK << 4) | (i & 0xF);
+      const uint16_t data_header =
+          MAC_HEADER(addr_other, addr_self, FRAME_DATA, i & 0xF);
+      const uint16_t ack_header_want =
+          MAC_HEADER(addr_self, addr_other, FRAME_ACK, i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
       decompose_u16(data_header, bits);
       input_frame(bits + MAC_HEADER_LEN, payload_len);
@@ -111,16 +117,11 @@ int main(int argc, char **argv) {
       do {
         phy_transmit_frame(bits, MAC_HEADER_LEN + payload_len);
         suseconds_t timeout = 50000;
-        uint16_t ack_header_got;
+        bool ack_bits[MAC_HEADER_LEN];
         do {
-          bool ack_bits[MAC_HEADER_LEN];
           phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
-          if (timeout < 0) {
-            break;
-          }
-          ack_header_got = compose_u16(ack_bits);
-        } while ((ack_header_got & 0xF0) != (FRAME_ACK << 4));
-        if (timeout >= 0 && ack_header_got == ack_header_want) {
+        } while (timeout >= 0 && compose_u16(ack_bits) != ack_header_want);
+        if (timeout >= 0) {
           break;
         }
       } while (--num_retries >= 0);
@@ -131,7 +132,8 @@ int main(int argc, char **argv) {
     }
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
     for (int i = 0; i <= receive_cnt; i++) {
-      const uint16_t data_header_want = (FRAME_DATA << 4) | (i & 0xF);
+      const uint16_t data_header_want =
+          MAC_HEADER(addr_self, addr_other, FRAME_DATA, i & 0xF);
       bool bits[PHY_PAYLOAD_MAX];
       for (;;) {
         uint16_t data_header_got;
@@ -139,8 +141,9 @@ int main(int argc, char **argv) {
           const size_t len = phy_receive_frame(bits, PHY_PAYLOAD_MAX, NULL);
           payload_len = len - MAC_HEADER_LEN;
           data_header_got = compose_u16(bits);
-        } while ((data_header_got & 0xF0) != (FRAME_DATA << 4));
-        const uint16_t ack_header = (FRAME_ACK << 4) | (data_header_got & 0xF);
+        } while ((data_header_got & 0xFFF0) != (data_header_want & 0xFFF0));
+        const uint16_t ack_header =
+            MAC_HEADER(addr_other, addr_self, FRAME_ACK, data_header_got & 0xF);
         bool ack_bits[MAC_HEADER_LEN];
         decompose_u16(ack_header, ack_bits);
         phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
