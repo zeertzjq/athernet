@@ -16,8 +16,8 @@
 
 static int transmit_bytes = 0;
 static int receive_bytes = 0;
-static int addr_self = 7;
-static int addr_other = 13;
+static int addr_self = 0;
+static int addr_other = 0;
 
 static void input_frame(bool *const bits, const size_t len) {
   for (int i = 0; i < len; i += 8) {
@@ -44,6 +44,10 @@ int main(int argc, char **argv) {
       transmit_bytes = atoi(argv[i] + LEN("--transmit="));
     } else if (strncmp(argv[i], S_LEN("--receive=")) == 0) {
       receive_bytes = atoi(argv[i] + LEN("--receive="));
+    } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
+      addr_self = atoi(argv[i] + LEN("--self=")) & 0xF;
+    } else if (strncmp(argv[i], S_LEN("--other=")) == 0) {
+      addr_other = atoi(argv[i] + LEN("--other=")) & 0xF;
     } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else {
