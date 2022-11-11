@@ -83,6 +83,7 @@ static size_t mac_transmit_frame(const int seq) {
   } while (--num_retries > 0);
   if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
     fprintf(stderr, "link error\n");
+    return 0;
   }
   if (node_type == NODE_PERF && num_retries > 0) {
     static int64_t total_bits = 0;
