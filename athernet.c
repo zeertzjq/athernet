@@ -32,11 +32,67 @@ static void output_frame(const bool *const bits, const size_t len) {
   fflush(stdout);
 }
 
+static int addr_self = 0;
+static int addr_other = 0;
+
+enum {
+  FRAME_DATA = 0,
+  FRAME_ACK = 1,
+};
+
+static size_t mac_transmit_frame(const int seq) {
+  const uint16_t data_header =
+      MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
+  const uint16_t ack_header_want =
+      MAC_HEADER(addr_self, addr_other, FRAME_ACK, seq);
+  bool bits[PHY_PAYLOAD_MAX];
+  decompose_u16(data_header, bits);
+  const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
+  int num_retries = 5;
+  do {
+    phy_transmit_frame(bits, MAC_HEADER_LEN + len);
+    suseconds_t timeout = 50000;
+    bool ack_bits[MAC_HEADER_LEN];
+    do {
+      phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
+    } while (timeout >= 0 && compose_u16(ack_bits) != ack_header_want);
+    if (timeout >= 0) {
+      break;
+    }
+  } while (--num_retries >= 0);
+  if (num_retries < 0 && len > 0) {
+    fprintf(stderr, "link error\n");
+  }
+  return len;
+}
+
+static size_t mac_receive_frame(const int seq) {
+  const uint16_t data_header_want =
+      MAC_HEADER(addr_self, addr_other, FRAME_DATA, seq);
+  bool bits[PHY_PAYLOAD_MAX];
+  size_t len = 0;
+  for (;;) {
+    uint16_t data_header_got;
+    do {
+      len = phy_receive_frame(bits, PHY_PAYLOAD_MAX, NULL) - MAC_HEADER_LEN;
+      data_header_got = compose_u16(bits);
+    } while ((data_header_got & 0xFFF0) != (data_header_want & 0xFFF0));
+    const uint16_t ack_header =
+        MAC_HEADER(addr_other, addr_self, FRAME_ACK, data_header_got & 0xF);
+    bool ack_bits[MAC_HEADER_LEN];
+    decompose_u16(ack_header, ack_bits);
+    phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+    if (data_header_got == data_header_want) {
+      break;
+    }
+  }
+  output_frame(bits + MAC_HEADER_LEN, len);
+  return len;
+}
+
 int main(int argc, char **argv) {
   bool transmit = false;
   bool receive = false;
-  int addr_self = 0;
-  int addr_other = 0;
 
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
@@ -59,11 +115,6 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  enum {
-    FRAME_DATA = 0,
-    FRAME_ACK = 1,
-  };
-
   phy_init();
   pthread_t receive_thread;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
@@ -71,55 +122,14 @@ int main(int argc, char **argv) {
 
   if (transmit && !receive) {
     for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const uint16_t data_header =
-          MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
-      const uint16_t ack_header_want =
-          MAC_HEADER(addr_self, addr_other, FRAME_ACK, seq);
-      bool bits[PHY_PAYLOAD_MAX];
-      decompose_u16(data_header, bits);
-      const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
-      int num_retries = 5;
-      do {
-        phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-        suseconds_t timeout = 50000;
-        bool ack_bits[MAC_HEADER_LEN];
-        do {
-          phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
-        } while (timeout >= 0 && compose_u16(ack_bits) != ack_header_want);
-        if (timeout >= 0) {
-          break;
-        }
-      } while (--num_retries >= 0);
-      if (num_retries < 0 && len > 0) {
-        fprintf(stderr, "link error\n");
-        break;
-      }
+      const size_t len = mac_transmit_frame(seq);
       if (len == 0) {
         break;
       }
     }
   } else if (receive && !transmit) {
     for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const uint16_t data_header_want =
-          MAC_HEADER(addr_self, addr_other, FRAME_DATA, seq);
-      bool bits[PHY_PAYLOAD_MAX];
-      size_t len = 0;
-      for (;;) {
-        uint16_t data_header_got;
-        do {
-          len = phy_receive_frame(bits, PHY_PAYLOAD_MAX, NULL) - MAC_HEADER_LEN;
-          data_header_got = compose_u16(bits);
-        } while ((data_header_got & 0xFFF0) != (data_header_want & 0xFFF0));
-        const uint16_t ack_header =
-            MAC_HEADER(addr_other, addr_self, FRAME_ACK, data_header_got & 0xF);
-        bool ack_bits[MAC_HEADER_LEN];
-        decompose_u16(ack_header, ack_bits);
-        phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
-        if (data_header_got == data_header_want) {
-          break;
-        }
-      }
-      output_frame(bits + MAC_HEADER_LEN, len);
+      const size_t len = mac_receive_frame(seq);
       if (len == 0) {
         break;
       }
