@@ -101,7 +101,7 @@ static size_t mac_receive_frame(const int seq) {
     bool ack_bits[MAC_HEADER_LEN];
     decompose_u16(ack_header, ack_bits);
     phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
-    if (node_type != NODE_DATA && data_header_got == data_header_want) {
+    if (node_type != NODE_DATA || data_header_got == data_header_want) {
       break;
     }
   }
@@ -151,11 +151,20 @@ int main(int argc, char **argv) {
   playback_start();
 
   for (int seq = 0;; seq = (seq + 1) & 0xF) {
-    if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
-      break;
-    }
-    if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
-      break;
+    if (addr_self < addr_other) {
+      if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
+        break;
+      }
+      if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
+        break;
+      }
+    } else {
+      if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
+        break;
+      }
+      if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
+        break;
+      }
     }
   }
 
