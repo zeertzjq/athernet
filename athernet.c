@@ -70,12 +70,12 @@ static size_t mac_transmit_frame(const int seq) {
   int num_retries = 8;
   do {
     phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-    suseconds_t timeout = 32000;
+    long timeout_ns = 32000000L;
     bool ack_bits[MAC_HEADER_LEN];
     do {
-      phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
-    } while (timeout >= 0 && compose_u16(ack_bits) != ack_header_want);
-    if (timeout >= 0) {
+      phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout_ns);
+    } while (timeout_ns >= 0 && compose_u16(ack_bits) != ack_header_want);
+    if (timeout_ns >= 0) {
       break;
     }
   } while (--num_retries >= 0);

@@ -5,14 +5,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include <time.h>
 
 #include "backend.h"
 #include "common.h"
 #include "physical.h"
 
-#define PERIOD_USEC (1000000 / RATE)
+#define PERIOD_NS (1000000000L / RATE)
 #define BIT_LEN 3
 #define LEN_BITS 16
 #define CRC_BITS 8
@@ -196,18 +195,21 @@ void *phy_receive_loop(void *args) {
 }
 
 size_t phy_receive_frame(bool *const bits, const size_t max_len,
-                         suseconds_t *const timeout) {
+                         long *const timeout_ns) {
   size_t frame_len = received_len;
   while (frame_len < 0 || frame_len > max_len) {
-    if (timeout != NULL) {
-      if (*timeout >= PERIOD_USEC) {
-        *timeout -= PERIOD_USEC;
+    if (timeout_ns != NULL) {
+      if (*timeout_ns >= PERIOD_NS) {
+        *timeout_ns -= PERIOD_NS;
       } else {
-        *timeout = -1;
+        *timeout_ns = -1;
         return 0;
       }
     }
-    usleep(PERIOD_USEC);
+    const struct timespec sleep_time = {
+        .tv_nsec = PERIOD_NS,
+    };
+    nanosleep(&sleep_time, NULL);
     frame_len = received_len;
   }
   received_len = -1;
