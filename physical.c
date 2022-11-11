@@ -20,7 +20,7 @@
 #define HALF_PREAMBLE_LEN 80
 
 int volume = 16384;
-bool has_ack = false;
+bool has_ack = true;
 volatile sig_atomic_t receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1};
