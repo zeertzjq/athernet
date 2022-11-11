@@ -150,20 +150,20 @@ int main(int argc, char **argv) {
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  for (int seq = 0;; seq = (seq + 1) & 0xF) {
+  for (int seq = 0; transmit || receive; seq = (seq + 1) & 0xF) {
     if (addr_self < addr_other) {
       if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
-        break;
+        receive = false;
       }
       if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
-        break;
+        transmit = false;
       }
     } else {
       if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
-        break;
+        transmit = false;
       }
       if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
-        break;
+        receive = false;
       }
     }
   }
