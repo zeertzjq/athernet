@@ -195,13 +195,12 @@ void *phy_receive_loop(void *args) {
 }
 
 size_t phy_receive_frame(bool *const bits, const size_t max_len,
-                         long *const timeout_ns) {
+                         int64_t *const timeout_ns) {
   size_t frame_len = received_len;
+  const int64_t time_end = timeout_ns != NULL ? time_ns() + *timeout_ns : 0;
   while (frame_len < 0 || frame_len > max_len) {
     if (timeout_ns != NULL) {
-      if (*timeout_ns >= SLEEP_NS) {
-        *timeout_ns -= SLEEP_NS;
-      } else {
+      if (*timeout_ns < SLEEP_NS) {
         *timeout_ns = -1;
         return 0;
       }
@@ -211,6 +210,9 @@ size_t phy_receive_frame(bool *const bits, const size_t max_len,
     };
     nanosleep(&ts, NULL);
     frame_len = received_len;
+    if (timeout_ns != NULL) {
+      *timeout_ns = time_end - time_ns();
+    }
   }
   received_len = -1;
   memcpy(bits, received_bits, frame_len * sizeof(bool));

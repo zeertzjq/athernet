@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "backend.h"
 #include "common.h"
@@ -47,12 +46,6 @@ static void output_frame(const bool *const bits, const size_t len) {
   fflush(stdout);
 }
 
-static uint64_t time_ns(void) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return ((uint64_t)ts.tv_sec) * 1000000000 + ts.tv_nsec;
-}
-
 #define MAC_HEADER_LEN 16
 #define MAC_HEADER(dest, src, type, seq)                                       \
   (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
@@ -74,10 +67,10 @@ static size_t mac_transmit_frame(const int seq) {
   decompose_u16(data_header, bits);
   const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
   int num_retries = node_type == NODE_PING ? 1 : 8;
-  const uint64_t time_start = node_type == NODE_PING ? time_ns() : 0;
+  const int64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
     phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-    long timeout_ns = node_type == NODE_PING ? 2000000000 : 50000000;
+    int64_t timeout_ns = node_type == NODE_PING ? 2000000000 : 100000000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
       phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout_ns);

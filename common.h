@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 #define RATE 48000
 #define LEN(s) (sizeof(s) - 1)
@@ -34,6 +35,12 @@ static inline void decompose_u16(const uint16_t num, bool *const bits) {
   for (int i = 0; i < 16; i++) {
     bits[i] = num & (1 << i);
   }
+}
+
+static inline int64_t time_ns(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ((int64_t)ts.tv_sec) * 1000000000 + ts.tv_nsec;
 }
 
 #endif // ATNET_COMMON_H
