@@ -58,6 +58,8 @@ enum {
   FRAME_ACK = 1,
 };
 
+static int64_t time_initial = 0;
+
 static size_t mac_transmit_frame(const int seq) {
   const uint16_t data_header =
       MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
@@ -81,6 +83,11 @@ static size_t mac_transmit_frame(const int seq) {
   } while (--num_retries > 0);
   if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
     fprintf(stderr, "link error\n");
+  }
+  if (node_type == NODE_PERF && num_retries > 0) {
+    static int64_t total_bits = 0;
+    total_bits += len;
+    fprintf(stderr, "%lf\n", total_bits / ((time_ns() - time_initial) / 1e9));
   }
   if (node_type == NODE_PING) {
     if (num_retries <= 0) {
@@ -149,7 +156,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   if (node_type == NODE_PERF) {
-    srand(time_ns());
+    srand(time_initial = time_ns());
   }
 
   phy_init();
