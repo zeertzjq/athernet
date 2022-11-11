@@ -70,14 +70,14 @@ int main(int argc, char **argv) {
   playback_start();
 
   if (transmit && !receive) {
-    for (int seq = 0, len = 800; len > 0; seq = (seq + 1) & 0xF) {
+    for (int seq = 0;; seq = (seq + 1) & 0xF) {
       const uint16_t data_header =
           MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
       const uint16_t ack_header_want =
           MAC_HEADER(addr_self, addr_other, FRAME_ACK, seq);
       bool bits[PHY_PAYLOAD_MAX];
       decompose_u16(data_header, bits);
-      len = input_frame(bits + MAC_HEADER_LEN, len);
+      const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
       int num_retries = 5;
       do {
         phy_transmit_frame(bits, MAC_HEADER_LEN + len);
@@ -94,12 +94,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "link error\n");
         break;
       }
+      if (len == 0) {
+        break;
+      }
     }
   } else if (receive && !transmit) {
-    for (int seq = 0, len = 800; len > 0; seq = (seq + 1) & 0xF) {
+    for (int seq = 0;; seq = (seq + 1) & 0xF) {
       const uint16_t data_header_want =
           MAC_HEADER(addr_self, addr_other, FRAME_DATA, seq);
       bool bits[PHY_PAYLOAD_MAX];
+      size_t len = 0;
       for (;;) {
         uint16_t data_header_got;
         do {
@@ -116,6 +120,9 @@ int main(int argc, char **argv) {
         }
       }
       output_frame(bits + MAC_HEADER_LEN, len);
+      if (len == 0) {
+        break;
+      }
     }
   } else {
     fprintf(stderr, "CSMA not implemented yet\n");
