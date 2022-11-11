@@ -1,36 +1,55 @@
-#include <math.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "backend.h"
 #include "common.h"
 #include "physical.h"
 
-#define MAC_HEADER_LEN 16
-#define MAC_HEADER(dest, src, type, seq)                                       \
-  (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
+static enum {
+  NODE_DATA,
+  NODE_PERF,
+  NODE_PING,
+} node_type = NODE_DATA;
 
 static size_t input_frame(bool *const bits, const size_t max_len) {
-  for (size_t pos = 0; pos < max_len; pos += 8) {
-    int c = getchar();
-    if (c == EOF) {
-      return pos;
+  switch (node_type) {
+  case NODE_DATA:
+    for (size_t pos = 0; pos < max_len; pos += 8) {
+      int c = getchar();
+      if (c == EOF) {
+        return pos;
+      }
+      decompose_u8(c, bits + pos);
     }
-    decompose_u8(c, bits + pos);
+    return max_len;
+  case NODE_PERF:
+    for (size_t pos = 0; pos < max_len; pos += 8) {
+      decompose_u8(rand(), bits + pos);
+    }
+    return max_len;
+  case NODE_PING:
+    return 0;
   }
-  return max_len;
 }
 
 static void output_frame(const bool *const bits, const size_t len) {
+  if (node_type != NODE_DATA) {
+    return;
+  }
   for (size_t pos = 0; pos < len; pos += 8) {
     putchar(compose_u8(bits + pos));
   }
   fflush(stdout);
 }
+
+#define MAC_HEADER_LEN 16
+#define MAC_HEADER(dest, src, type, seq)                                       \
+  (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
 
 static int addr_self = 0;
 static int addr_other = 0;
@@ -60,7 +79,7 @@ static size_t mac_transmit_frame(const int seq) {
       break;
     }
   } while (--num_retries >= 0);
-  if (num_retries < 0 && len > 0) {
+  if (node_type == NODE_DATA && num_retries < 0 && len > 0) {
     fprintf(stderr, "link error\n");
   }
   return len;
@@ -82,7 +101,7 @@ static size_t mac_receive_frame(const int seq) {
     bool ack_bits[MAC_HEADER_LEN];
     decompose_u16(ack_header, ack_bits);
     phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
-    if (data_header_got == data_header_want) {
+    if (node_type != NODE_DATA && data_header_got == data_header_want) {
       break;
     }
   }
@@ -101,6 +120,14 @@ int main(int argc, char **argv) {
       transmit = true;
     } else if (strcmp(argv[i], "--receive") == 0) {
       receive = true;
+    } else if (strcmp(argv[i], "--perf") == 0) {
+      node_type = NODE_PERF;
+      transmit = true;
+      receive = true;
+    } else if (strcmp(argv[i], "--ping") == 0) {
+      node_type = NODE_PING;
+      transmit = true;
+      receive = true;
     } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
       addr_self = atoi(argv[i] + LEN("--self=")) & 0xF;
     } else if (strncmp(argv[i], S_LEN("--other=")) == 0) {
@@ -114,29 +141,22 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Nothing to do\n");
     return EXIT_FAILURE;
   }
+  if (node_type == NODE_PERF) {
+    srand(time(NULL));
+  }
 
   phy_init();
   pthread_t receive_thread;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  if (transmit && !receive) {
-    for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const size_t len = mac_transmit_frame(seq);
-      if (len == 0) {
-        break;
-      }
+  for (int seq = 0;; seq = (seq + 1) & 0xF) {
+    if (transmit && mac_transmit_frame(seq) == 0 && node_type == NODE_DATA) {
+      break;
     }
-  } else if (receive && !transmit) {
-    for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const size_t len = mac_receive_frame(seq);
-      if (len == 0) {
-        break;
-      }
+    if (receive && mac_receive_frame(seq) == 0 && node_type == NODE_DATA) {
+      break;
     }
-  } else {
-    fprintf(stderr, "CSMA not implemented yet\n");
-    return EXIT_FAILURE;
   }
 
   receive_stopped = 1;
