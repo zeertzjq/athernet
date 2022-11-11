@@ -73,10 +73,11 @@ static size_t mac_transmit_frame(const int seq) {
   bool bits[PHY_PAYLOAD_MAX];
   decompose_u16(data_header, bits);
   const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
-  int num_retries = 8;
+  int num_retries = node_type == NODE_PING ? 1 : 8;
+  const uint64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
     phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-    long timeout_ns = 50000000;
+    long timeout_ns = node_type == NODE_PING ? 2000000000 : 50000000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
       phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout_ns);
@@ -87,6 +88,13 @@ static size_t mac_transmit_frame(const int seq) {
   } while (--num_retries > 0);
   if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
     fprintf(stderr, "link error\n");
+  }
+  if (node_type == NODE_PING) {
+    if (num_retries <= 0) {
+      fprintf(stderr, "TIMEOUT\n");
+    } else {
+      fprintf(stderr, "%lf\n", (time_ns() - time_start) / 1e6);
+    }
   }
   return len;
 }
