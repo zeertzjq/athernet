@@ -40,9 +40,9 @@ enum {
   FRAME_ACK = 1,
 };
 
-static size_t mac_transmit_frame(const int seq) {
+static size_t mac_transmit_frame(const int frame_type, const int seq) {
   const uint16_t data_header =
-      MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
+      MAC_HEADER(addr_other, addr_self, frame_type, seq);
   const uint16_t ack_header_want =
       MAC_HEADER(addr_self, addr_other, FRAME_ACK, seq);
   bool bits[PHY_PAYLOAD_MAX];
@@ -66,9 +66,9 @@ static size_t mac_transmit_frame(const int seq) {
   return len;
 }
 
-static size_t mac_receive_frame(const int seq) {
+static size_t mac_receive_frame(const int frame_type, const int seq) {
   const uint16_t data_header_want =
-      MAC_HEADER(addr_self, addr_other, FRAME_DATA, seq);
+      MAC_HEADER(addr_self, addr_other, frame_type, seq);
   bool bits[PHY_PAYLOAD_MAX];
   size_t len = 0;
   for (;;) {
@@ -122,14 +122,14 @@ int main(int argc, char **argv) {
 
   if (transmit && !receive) {
     for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const size_t len = mac_transmit_frame(seq);
+      const size_t len = mac_transmit_frame(FRAME_DATA, seq);
       if (len == 0) {
         break;
       }
     }
   } else if (receive && !transmit) {
     for (int seq = 0;; seq = (seq + 1) & 0xF) {
-      const size_t len = mac_receive_frame(seq);
+      const size_t len = mac_receive_frame(FRAME_DATA, seq);
       if (len == 0) {
         break;
       }
