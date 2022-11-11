@@ -67,10 +67,10 @@ static size_t mac_transmit_frame(const int seq) {
   bool bits[PHY_PAYLOAD_MAX];
   decompose_u16(data_header, bits);
   const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
-  int num_retries = 5;
+  int num_retries = 8;
   do {
     phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-    suseconds_t timeout = 50000;
+    suseconds_t timeout = 32000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
       phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout);
