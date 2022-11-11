@@ -5,7 +5,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "backend.h"
 #include "common.h"
@@ -205,10 +204,7 @@ size_t phy_receive_frame(bool *const bits, const size_t max_len,
         return 0;
       }
     }
-    const struct timespec ts = {
-        .tv_nsec = SLEEP_NS,
-    };
-    nanosleep(&ts, NULL);
+    sleep_ns(SLEEP_NS);
     frame_len = received_len;
     if (timeout_ns != NULL) {
       *timeout_ns = time_end - time_ns();

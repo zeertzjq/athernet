@@ -43,4 +43,11 @@ static inline int64_t time_ns(void) {
   return ((int64_t)ts.tv_sec) * 1000000000 + ts.tv_nsec;
 }
 
+static inline void sleep_ns(long ns) {
+  const struct timespec ts = {
+      .tv_nsec = ns,
+  };
+  nanosleep(&ts, NULL);
+}
+
 #endif // ATNET_COMMON_H
