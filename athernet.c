@@ -47,6 +47,12 @@ static void output_frame(const bool *const bits, const size_t len) {
   fflush(stdout);
 }
 
+static uint64_t time_ns(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return ((uint64_t)ts.tv_sec) * 1000000000 + ts.tv_nsec;
+}
+
 #define MAC_HEADER_LEN 16
 #define MAC_HEADER(dest, src, type, seq)                                       \
   (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
@@ -70,7 +76,7 @@ static size_t mac_transmit_frame(const int seq) {
   int num_retries = 8;
   do {
     phy_transmit_frame(bits, MAC_HEADER_LEN + len);
-    long timeout_ns = 32000000L;
+    long timeout_ns = 50000000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
       phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout_ns);
@@ -78,8 +84,8 @@ static size_t mac_transmit_frame(const int seq) {
     if (timeout_ns >= 0) {
       break;
     }
-  } while (--num_retries >= 0);
-  if (node_type == NODE_DATA && num_retries < 0 && len > 0) {
+  } while (--num_retries > 0);
+  if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
     fprintf(stderr, "link error\n");
   }
   return len;
@@ -142,7 +148,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   if (node_type == NODE_PERF) {
-    srand(time(NULL));
+    srand(time_ns());
   }
 
   phy_init();

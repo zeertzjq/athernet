@@ -11,12 +11,12 @@
 #include "common.h"
 #include "physical.h"
 
-#define PERIOD_NS (1000000000L / RATE)
 #define BIT_LEN 3
 #define LEN_BITS 16
 #define CRC_BITS 8
 #define PREAMBLE_LEN 160
 #define HALF_PREAMBLE_LEN 80
+#define SLEEP_NS ((1000000000 / RATE) * 3)
 
 int volume = 16384;
 bool has_ack = true;
@@ -199,17 +199,17 @@ size_t phy_receive_frame(bool *const bits, const size_t max_len,
   size_t frame_len = received_len;
   while (frame_len < 0 || frame_len > max_len) {
     if (timeout_ns != NULL) {
-      if (*timeout_ns >= PERIOD_NS) {
-        *timeout_ns -= PERIOD_NS;
+      if (*timeout_ns >= SLEEP_NS) {
+        *timeout_ns -= SLEEP_NS;
       } else {
         *timeout_ns = -1;
         return 0;
       }
     }
-    const struct timespec sleep_time = {
-        .tv_nsec = PERIOD_NS,
+    const struct timespec ts = {
+        .tv_nsec = SLEEP_NS,
     };
-    nanosleep(&sleep_time, NULL);
+    nanosleep(&ts, NULL);
     frame_len = received_len;
   }
   received_len = -1;
