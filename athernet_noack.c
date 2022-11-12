@@ -76,7 +76,8 @@ int main(int argc, char **argv) {
     pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
     for (int i = 0; i < receive_cnt; i++) {
       bool bits[PHY_PAYLOAD_FIXED];
-      phy_receive_frame(bits, PHY_PAYLOAD_FIXED, NULL);
+      phy_poll_frame(NULL);
+      phy_receive_frame(bits);
       output_frame(bits, PHY_PAYLOAD_FIXED);
     }
     phy_receive_stopped = 1;

@@ -75,7 +75,12 @@ static size_t mac_transmit_frame(const int seq) {
     int64_t timeout_ns = node_type == NODE_PING ? 2000000000 : 100000000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
-      phy_receive_frame(ack_bits, MAC_HEADER_LEN, &timeout_ns);
+      phy_poll_frame(&timeout_ns);
+      if (phy_received_len > MAC_HEADER_LEN) {
+        phy_received_len = -1;
+        continue;
+      }
+      phy_receive_frame(ack_bits);
     } while (timeout_ns >= 0 && compose_u16(ack_bits) != ack_header_want);
     if (timeout_ns >= 0) {
       break;
@@ -108,7 +113,8 @@ static size_t mac_receive_frame(const int seq) {
   for (;;) {
     uint16_t data_header_got;
     do {
-      len = phy_receive_frame(bits, PHY_PAYLOAD_MAX, NULL) - MAC_HEADER_LEN;
+      phy_poll_frame(NULL);
+      len = phy_receive_frame(bits) - MAC_HEADER_LEN;
       data_header_got = compose_u16(bits);
     } while ((data_header_got & 0xFFF0) != (data_header_want & 0xFFF0));
     const uint16_t ack_header =

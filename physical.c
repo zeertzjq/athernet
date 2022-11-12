@@ -20,7 +20,7 @@
 int volume = 16384;
 bool has_ack = true;
 bool noisy = false;
-bool phy_received_bits[PHY_PAYLOAD_MAX];
+static bool phy_received_bits[PHY_PAYLOAD_MAX];
 volatile sig_atomic_t phy_received_len = -1;
 volatile sig_atomic_t phy_receiving_frame = 0;
 volatile sig_atomic_t phy_receive_stopped = 0;
@@ -196,12 +196,12 @@ void *phy_receive_loop(void *args) {
           len_pos = 0;
           payload_pos = 0;
           crc_pos = 0;
+          phy_receiving_frame = 0;
           if (has_ack && crc16(bits, payload_len) != compose_u16(crc_bits)) {
             continue;
           }
           memcpy(phy_received_bits, bits, payload_len * sizeof(bool));
           phy_received_len = payload_len;
-          phy_receiving_frame = 0;
           continue;
         }
       }
@@ -211,23 +211,26 @@ void *phy_receive_loop(void *args) {
   return NULL;
 }
 
-size_t phy_receive_frame(bool *const bits, const size_t max_len,
-                         int64_t *const timeout_ns) {
-  size_t frame_len = phy_received_len;
+void phy_poll_frame(int64_t *const timeout_ns) {
   const int64_t time_end = timeout_ns != NULL ? time_ns() + *timeout_ns : 0;
-  while (frame_len < 0 || frame_len > max_len) {
+  while (phy_received_len < 0) {
     if (timeout_ns != NULL) {
       if (*timeout_ns < SLEEP_NS) {
         *timeout_ns = -1;
-        return 0;
+        return;
       }
     }
-    sleep_ns(SLEEP_NS);
-    frame_len = phy_received_len;
+    do {
+      sleep_ns(SLEEP_NS);
+    } while (phy_receiving_frame);
     if (timeout_ns != NULL) {
       *timeout_ns = time_end - time_ns();
     }
   }
+}
+
+size_t phy_receive_frame(bool *const bits) {
+  const size_t frame_len = phy_received_len;
   phy_received_len = -1;
   memcpy(bits, phy_received_bits, frame_len * sizeof(bool));
   return frame_len;
