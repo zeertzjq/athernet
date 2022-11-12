@@ -63,25 +63,36 @@ static int64_t time_initial = 0;
 static int transmit_seq = 0;
 static bool transmit_bits[PHY_PAYLOAD_MAX];
 static size_t transmit_len = 0;
+static uint16_t ack_header_want = 0;
+static int num_retries = 0;
+static int64_t time_transmit_end = 0;
 
 static void mac_transmit_prepare(void) {
+  num_retries = node_type == NODE_PING ? 1 : 8;
   const uint16_t data_header =
       MAC_HEADER(addr_other, addr_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
   transmit_len = input_frame(transmit_bits + MAC_HEADER_LEN, 800);
+  ack_header_want = MAC_HEADER(addr_self, addr_other, FRAME_ACK, transmit_seq);
+}
+
+static void mac_transmit_retry(void) {
+  if (!noisy) {
+    num_retries--;
+  }
+  phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
+  time_transmit_end = time_ns();
 }
 
 static size_t mac_transmit_frame(const int seq) {
   transmit_seq = seq;
   mac_transmit_prepare();
-  const uint16_t ack_header_want =
-      MAC_HEADER(addr_self, addr_other, FRAME_ACK, transmit_seq);
   int num_retries = node_type == NODE_PING ? 1 : 8;
   const int64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
     phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
-    int64_t timeout_ns = node_type == NODE_PING ? 2000000000 : 100000000;
-    while (phy_poll_frame(&timeout_ns)) {
+    int64_t timeout = node_type == NODE_PING ? 2000000000 : 100000000;
+    while (phy_poll_frame(&timeout)) {
       if (phy_received_len > MAC_HEADER_LEN) {
         phy_received_len = -1;
       } else {
@@ -92,7 +103,7 @@ static size_t mac_transmit_frame(const int seq) {
         }
       }
     }
-    if (timeout_ns >= 0) {
+    if (timeout >= 0) {
       break;
     }
   } while (noisy || --num_retries > 0);
@@ -115,6 +126,13 @@ static size_t mac_transmit_frame(const int seq) {
   return transmit_len;
 }
 
+static void mac_send_ack(const int seq) {
+  const uint16_t ack_header = MAC_HEADER(addr_other, addr_self, FRAME_ACK, seq);
+  bool ack_bits[MAC_HEADER_LEN];
+  decompose_u16(ack_header, ack_bits);
+  phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+}
+
 static size_t mac_receive_frame(const int seq) {
   const uint16_t data_header_want =
       MAC_HEADER(addr_self, addr_other, FRAME_DATA, seq);
@@ -127,11 +145,7 @@ static size_t mac_receive_frame(const int seq) {
       len = phy_receive_frame(bits) - MAC_HEADER_LEN;
       data_header_got = compose_u16(bits);
     } while ((data_header_got & 0xFFF0) != (data_header_want & 0xFFF0));
-    const uint16_t ack_header =
-        MAC_HEADER(addr_other, addr_self, FRAME_ACK, data_header_got & 0xF);
-    bool ack_bits[MAC_HEADER_LEN];
-    decompose_u16(ack_header, ack_bits);
-    phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+    mac_send_ack(data_header_got & 0xF);
     if (node_type != NODE_DATA || data_header_got == data_header_want) {
       break;
     }
@@ -182,6 +196,56 @@ int main(int argc, char **argv) {
   pthread_t receive_thread;
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
+
+  const int64_t ack_timeout = node_type == NODE_PING ? 2000000000 : 100000000;
+
+  if (transmit) {
+    mac_transmit_prepare();
+    mac_transmit_retry();
+  }
+
+  const uint16_t receive_ack_header =
+      MAC_HEADER(addr_self, addr_other, FRAME_ACK, 0);
+  const uint16_t receive_data_header =
+      MAC_HEADER(addr_self, addr_other, FRAME_DATA, 0);
+  int receive_seq = 0;
+
+  while (transmit || receive) {
+    int64_t poll_timeout = 1000000;
+    while (phy_poll_frame(&poll_timeout)) {
+      bool bits[PHY_PAYLOAD_MAX];
+      const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
+      const uint16_t header = compose_u16(bits);
+      if (receive && (header & 0xFFF0) == receive_data_header) {
+        const int seq = header & 0xF;
+        mac_send_ack(seq);
+        if (seq == receive_seq) {
+          output_frame(bits + MAC_HEADER_LEN, len);
+          if (len == 0 && node_type == NODE_DATA) {
+            receive = false;
+          } else {
+            receive_seq = (receive_seq + 1) & 0xF;
+          }
+        }
+      } else if (transmit && header == ack_header_want) {
+        if (transmit_len == 0 && node_type == NODE_DATA) {
+          transmit = false;
+        } else {
+          transmit_seq = (transmit_seq + 1) & 0xF;
+          mac_transmit_prepare();
+          mac_transmit_retry();
+        }
+      }
+    }
+    if (transmit && time_ns() - time_transmit_end > ack_timeout) {
+      if (num_retries == 0) {
+        fprintf(stderr, "link error\n");
+        transmit = false;
+      } else {
+        mac_transmit_retry();
+      }
+    }
+  }
 
   for (int seq = 0; transmit || receive; seq = (seq + 1) & 0xF) {
     if (addr_self < addr_other) {
