@@ -12,8 +12,10 @@
 extern int volume;
 extern bool has_ack;
 extern bool noisy;
-extern volatile sig_atomic_t phy_receive_stopped;
+extern bool phy_received_bits[PHY_PAYLOAD_MAX];
+extern volatile sig_atomic_t phy_received_len;
 extern volatile sig_atomic_t phy_receiving_frame;
+extern volatile sig_atomic_t phy_receive_stopped;
 
 void phy_init(void);
 void phy_transmit_frame(const bool *bits, size_t len);

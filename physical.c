@@ -20,8 +20,10 @@
 int volume = 16384;
 bool has_ack = true;
 bool noisy = false;
-volatile sig_atomic_t phy_receive_stopped = 0;
+bool phy_received_bits[PHY_PAYLOAD_MAX];
+volatile sig_atomic_t phy_received_len = -1;
 volatile sig_atomic_t phy_receiving_frame = 0;
+volatile sig_atomic_t phy_receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1};
 static double preamble[PREAMBLE_LEN];
@@ -85,8 +87,6 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
 static int16_t capture_buf[PREAMBLE_LEN * 2];
 static size_t read_pos = 0;
 static size_t read_end = 0;
-static bool received_bits[PHY_PAYLOAD_MAX];
-static volatile sig_atomic_t received_len = -1;
 
 static int64_t sqr(const int64_t x) { return x * x; }
 
@@ -199,8 +199,8 @@ void *phy_receive_loop(void *args) {
           if (has_ack && crc16(bits, payload_len) != compose_u16(crc_bits)) {
             continue;
           }
-          memcpy(received_bits, bits, payload_len * sizeof(bool));
-          received_len = payload_len;
+          memcpy(phy_received_bits, bits, payload_len * sizeof(bool));
+          phy_received_len = payload_len;
           phy_receiving_frame = 0;
           continue;
         }
@@ -213,7 +213,7 @@ void *phy_receive_loop(void *args) {
 
 size_t phy_receive_frame(bool *const bits, const size_t max_len,
                          int64_t *const timeout_ns) {
-  size_t frame_len = received_len;
+  size_t frame_len = phy_received_len;
   const int64_t time_end = timeout_ns != NULL ? time_ns() + *timeout_ns : 0;
   while (frame_len < 0 || frame_len > max_len) {
     if (timeout_ns != NULL) {
@@ -223,12 +223,12 @@ size_t phy_receive_frame(bool *const bits, const size_t max_len,
       }
     }
     sleep_ns(SLEEP_NS);
-    frame_len = received_len;
+    frame_len = phy_received_len;
     if (timeout_ns != NULL) {
       *timeout_ns = time_end - time_ns();
     }
   }
-  received_len = -1;
-  memcpy(bits, received_bits, frame_len * sizeof(bool));
+  phy_received_len = -1;
+  memcpy(bits, phy_received_bits, frame_len * sizeof(bool));
   return frame_len;
 }
