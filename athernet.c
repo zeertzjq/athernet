@@ -215,8 +215,8 @@ int main(int argc, char **argv) {
   int receive_seq = 0;
 
   while (transmit || receive) {
-    int64_t poll_timeout = 1000000;
-    while (phy_poll_frame(&poll_timeout)) {
+    int64_t poll_timeout = 10000000;
+    if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
       const uint16_t header = compose_u16(bits);
@@ -248,7 +248,9 @@ int main(int argc, char **argv) {
           mac_transmit_retry();
         }
       }
+      continue;
     }
+
     if (transmit && time_ns() - time_transmit_end > ack_timeout) {
       if (num_retries == 0) {
         if (node_type == NODE_DATA) {
