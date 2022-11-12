@@ -11,6 +11,7 @@
 
 extern int volume;
 extern bool has_ack;
+extern bool noisy;
 extern volatile sig_atomic_t receive_stopped;
 
 void phy_init(void);

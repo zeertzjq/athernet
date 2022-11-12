@@ -19,6 +19,7 @@
 
 int volume = 16384;
 bool has_ack = true;
+bool noisy = false;
 volatile sig_atomic_t receive_stopped = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1};
@@ -55,6 +56,8 @@ static void encode_bit(const bool bit) {
   }
 }
 
+static sig_atomic_t capture_volume = 0;
+
 void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
   if (has_ack) {
@@ -71,6 +74,9 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
   decompose_u8(crc8(bits, len), crc_bits);
   for (int i = 0; i < CRC_BITS; i++) {
     encode_bit(crc_bits[i]);
+  }
+  while (noisy && capture_volume * 100 > volume) {
+    sleep_ns(SLEEP_NS);
   }
   playback_write(playback_buf, playback_len);
 }
@@ -144,6 +150,15 @@ void *phy_receive_loop(void *args) {
   capture_start();
   while (!receive_stopped) {
     capture_read(capture_buf + read_end, PREAMBLE_LEN);
+    if (noisy) {
+      int max_volume = 0;
+      for (int i = read_end; i < read_end + PREAMBLE_LEN; i++) {
+        if (capture_buf[i] > max_volume) {
+          max_volume = capture_buf[i];
+        }
+      }
+      capture_volume = max_volume;
+    }
     read_end = PREAMBLE_LEN - read_end;
     while (read_pos != read_end) {
       if (!found_preamble) {

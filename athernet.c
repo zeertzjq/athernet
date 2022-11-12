@@ -80,7 +80,7 @@ static size_t mac_transmit_frame(const int seq) {
     if (timeout_ns >= 0) {
       break;
     }
-  } while (--num_retries > 0);
+  } while (noisy || --num_retries > 0);
   if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
     fprintf(stderr, "link error\n");
     return 0;
@@ -131,6 +131,8 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
+    } else if (strcmp(argv[i], "--noisy") == 0) {
+      noisy = true;
     } else if (strcmp(argv[i], "--transmit") == 0) {
       transmit = true;
     } else if (strcmp(argv[i], "--receive") == 0) {
