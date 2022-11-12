@@ -215,6 +215,7 @@ int main(int argc, char **argv) {
 
   bool receive_end = false;
   int64_t receive_end_time = 0;
+  const int64_t end_timeout = noisy ? 2000000000 : 200000000;
 
   while (transmit || receive) {
     int64_t poll_timeout = 10000000;
@@ -257,13 +258,13 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    const int64_t time_current = time_ns();
+    const int64_t time_now = time_ns();
 
-    if (receive && receive_end && time_current - receive_end_time > 200000000) {
+    if (receive && receive_end && time_now - receive_end_time > end_timeout) {
       receive = false;
     }
 
-    if (transmit && time_current - time_transmit_end > ack_timeout) {
+    if (transmit && time_now - time_transmit_end > ack_timeout) {
       if (num_retries == 0) {
         if (node_type == NODE_DATA) {
           fprintf(stderr, "link error\n");
