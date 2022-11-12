@@ -212,7 +212,9 @@ int main(int argc, char **argv) {
       MAC_HEADER(addr_self, addr_other, FRAME_ACK, 0);
   const uint16_t receive_data_header =
       MAC_HEADER(addr_self, addr_other, FRAME_DATA, 0);
-  int receive_seq = 0;
+
+  bool receive_end = false;
+  int64_t receive_end_time = 0;
 
   while (transmit || receive) {
     int64_t poll_timeout = 10000000;
@@ -223,12 +225,16 @@ int main(int argc, char **argv) {
       if (receive && (header & 0xFFF0) == receive_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
-        if (seq == receive_seq) {
-          output_frame(bits + MAC_HEADER_LEN, len);
-          if (len == 0 && node_type == NODE_DATA) {
-            receive = false;
-          } else {
-            receive_seq = (receive_seq + 1) & 0xF;
+        if (node_type == NODE_DATA) {
+          static int receive_seq = 0;
+          if (seq == receive_seq) {
+            output_frame(bits + MAC_HEADER_LEN, len);
+            if (len == 0) {
+              receive_end = true;
+              receive_end_time = time_ns();
+            } else {
+              receive_seq = (receive_seq + 1) & 0xF;
+            }
           }
         }
       } else if (transmit && header == ack_header_want) {
@@ -251,7 +257,13 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    if (transmit && time_ns() - time_transmit_end > ack_timeout) {
+    const int64_t time_current = time_ns();
+
+    if (receive && receive_end && time_current - receive_end_time > 200000000) {
+      receive = false;
+    }
+
+    if (transmit && time_current - time_transmit_end > ack_timeout) {
       if (num_retries == 0) {
         if (node_type == NODE_DATA) {
           fprintf(stderr, "link error\n");
