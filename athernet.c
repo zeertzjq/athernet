@@ -65,6 +65,7 @@ static bool transmit_bits[PHY_PAYLOAD_MAX];
 static size_t transmit_len = 0;
 static uint16_t ack_header_want = 0;
 static int num_retries = 0;
+static int64_t time_transmit_start = 0;
 static int64_t time_transmit_end = 0;
 
 static void mac_transmit_prepare(void) {
@@ -79,6 +80,9 @@ static void mac_transmit_prepare(void) {
 static void mac_transmit_retry(void) {
   if (!noisy) {
     num_retries--;
+  }
+  if (node_type == NODE_PING) {
+    time_transmit_start = time_ns();
   }
   phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
   time_transmit_end = time_ns();
@@ -231,6 +235,14 @@ int main(int argc, char **argv) {
         if (transmit_len == 0 && node_type == NODE_DATA) {
           transmit = false;
         } else {
+          if (node_type == NODE_PERF) {
+            static int64_t total_bits = 0;
+            total_bits += transmit_len;
+            fprintf(stderr, "%lf\n",
+                    total_bits / ((time_ns() - time_initial) / 1e9));
+          } else if (node_type == NODE_PING) {
+            fprintf(stderr, "%lf\n", (time_ns() - time_transmit_start) / 1e6);
+          }
           transmit_seq = (transmit_seq + 1) & 0xF;
           mac_transmit_prepare();
           mac_transmit_retry();
@@ -239,8 +251,16 @@ int main(int argc, char **argv) {
     }
     if (transmit && time_ns() - time_transmit_end > ack_timeout) {
       if (num_retries == 0) {
-        fprintf(stderr, "link error\n");
-        transmit = false;
+        if (node_type == NODE_DATA) {
+          fprintf(stderr, "link error\n");
+          transmit = false;
+        } else {
+          if (node_type == NODE_PING) {
+            fprintf(stderr, "TIMEOUT\n");
+          }
+          mac_transmit_prepare();
+          mac_transmit_retry();
+        }
       } else {
         mac_transmit_retry();
       }
