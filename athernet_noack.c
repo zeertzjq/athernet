@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
       phy_receive_frame(bits, PHY_PAYLOAD_FIXED, NULL);
       output_frame(bits, PHY_PAYLOAD_FIXED);
     }
-    receive_stopped = 1;
+    phy_receive_stopped = 1;
     pthread_join(receive_thread, NULL);
   }
 

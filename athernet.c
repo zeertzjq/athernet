@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  receive_stopped = 1;
+  phy_receive_stopped = 1;
   playback_stop();
   pthread_join(receive_thread, NULL);
 

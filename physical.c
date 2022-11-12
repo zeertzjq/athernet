@@ -20,7 +20,8 @@
 int volume = 16384;
 bool has_ack = true;
 bool noisy = false;
-volatile sig_atomic_t receive_stopped = 0;
+volatile sig_atomic_t phy_receive_stopped = 0;
+volatile sig_atomic_t phy_receiving_frame = 0;
 
 static const int carrier[BIT_LEN] = {1, 1, -1};
 static double preamble[PREAMBLE_LEN];
@@ -56,7 +57,7 @@ static void encode_bit(const bool bit) {
   }
 }
 
-static sig_atomic_t capture_volume = 0;
+static volatile sig_atomic_t capture_volume = 0;
 
 void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
@@ -148,7 +149,7 @@ void *phy_receive_loop(void *args) {
   bool crc_bits[CRC_BITS];
   size_t crc_pos = 0;
   capture_start();
-  while (!receive_stopped) {
+  while (!phy_receive_stopped) {
     capture_read(capture_buf + read_end, PREAMBLE_LEN);
     if (noisy) {
       int max_volume = 0;
@@ -180,6 +181,7 @@ void *phy_receive_loop(void *args) {
               len_pos = 0;
             } else {
               payload_len = len;
+              phy_receiving_frame = 1;
             }
           }
           continue;
@@ -199,6 +201,7 @@ void *phy_receive_loop(void *args) {
           }
           memcpy(received_bits, bits, payload_len * sizeof(bool));
           received_len = payload_len;
+          phy_receiving_frame = 0;
           continue;
         }
       }
