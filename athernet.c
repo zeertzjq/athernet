@@ -91,7 +91,7 @@ static void mac_transmit_retry(void) {
 static size_t mac_transmit_frame(const int seq) {
   transmit_seq = seq;
   mac_transmit_prepare();
-  int num_retries = node_type == NODE_PING ? 1 : 8;
+  int num_retries = node_type == NODE_DATA ? 8 : 1;
   const int64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
     phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
