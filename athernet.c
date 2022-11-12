@@ -60,18 +60,26 @@ enum {
 
 static int64_t time_initial = 0;
 
-static size_t mac_transmit_frame(const int seq) {
+static int transmit_seq = 0;
+static bool transmit_bits[PHY_PAYLOAD_MAX];
+static size_t transmit_len = 0;
+
+static void mac_transmit_prepare(void) {
   const uint16_t data_header =
-      MAC_HEADER(addr_other, addr_self, FRAME_DATA, seq);
+      MAC_HEADER(addr_other, addr_self, FRAME_DATA, transmit_seq);
+  decompose_u16(data_header, transmit_bits);
+  transmit_len = input_frame(transmit_bits + MAC_HEADER_LEN, 800);
+}
+
+static size_t mac_transmit_frame(const int seq) {
+  transmit_seq = seq;
+  mac_transmit_prepare();
   const uint16_t ack_header_want =
-      MAC_HEADER(addr_self, addr_other, FRAME_ACK, seq);
-  bool bits[PHY_PAYLOAD_MAX];
-  decompose_u16(data_header, bits);
-  const size_t len = input_frame(bits + MAC_HEADER_LEN, 800);
+      MAC_HEADER(addr_self, addr_other, FRAME_ACK, transmit_seq);
   int num_retries = node_type == NODE_PING ? 1 : 8;
   const int64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
-    phy_transmit_frame(bits, MAC_HEADER_LEN + len);
+    phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
     int64_t timeout_ns = node_type == NODE_PING ? 2000000000 : 100000000;
     while (phy_poll_frame(&timeout_ns)) {
       if (phy_received_len > MAC_HEADER_LEN) {
@@ -88,13 +96,13 @@ static size_t mac_transmit_frame(const int seq) {
       break;
     }
   } while (noisy || --num_retries > 0);
-  if (node_type == NODE_DATA && num_retries <= 0 && len > 0) {
+  if (node_type == NODE_DATA && num_retries <= 0 && transmit_len > 0) {
     fprintf(stderr, "link error\n");
     return 0;
   }
   if (node_type == NODE_PERF && num_retries > 0) {
     static int64_t total_bits = 0;
-    total_bits += len;
+    total_bits += transmit_len;
     fprintf(stderr, "%lf\n", total_bits / ((time_ns() - time_initial) / 1e9));
   }
   if (node_type == NODE_PING) {
@@ -104,7 +112,7 @@ static size_t mac_transmit_frame(const int seq) {
       fprintf(stderr, "%lf\n", (time_ns() - time_start) / 1e6);
     }
   }
-  return len;
+  return transmit_len;
 }
 
 static size_t mac_receive_frame(const int seq) {
