@@ -211,13 +211,13 @@ void *phy_receive_loop(void *args) {
   return NULL;
 }
 
-void phy_poll_frame(int64_t *const timeout_ns) {
+bool phy_poll_frame(int64_t *const timeout_ns) {
   const int64_t time_end = timeout_ns != NULL ? time_ns() + *timeout_ns : 0;
   while (phy_received_len < 0) {
     if (timeout_ns != NULL) {
       if (*timeout_ns < SLEEP_NS) {
         *timeout_ns = -1;
-        return;
+        return false;
       }
     }
     do {
@@ -227,6 +227,7 @@ void phy_poll_frame(int64_t *const timeout_ns) {
       *timeout_ns = time_end - time_ns();
     }
   }
+  return true;
 }
 
 size_t phy_receive_frame(bool *const bits) {

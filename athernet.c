@@ -75,8 +75,7 @@ static size_t mac_transmit_frame(const int seq) {
     int64_t timeout_ns = node_type == NODE_PING ? 2000000000 : 100000000;
     bool ack_bits[MAC_HEADER_LEN];
     do {
-      phy_poll_frame(&timeout_ns);
-      if (phy_received_len > MAC_HEADER_LEN) {
+      if (!phy_poll_frame(&timeout_ns) || phy_received_len > MAC_HEADER_LEN) {
         phy_received_len = -1;
         continue;
       }
