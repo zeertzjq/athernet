@@ -12,7 +12,7 @@
 
 #define BIT_LEN 3
 #define LEN_BITS 16
-#define CRC_BITS 8
+#define CRC_BITS 16
 #define PREAMBLE_LEN 160
 #define HALF_PREAMBLE_LEN 80
 #define SLEEP_NS ((1000000000 / RATE) * 3)
@@ -37,11 +37,11 @@ void phy_init(void) {
   }
 }
 
-static uint8_t crc8(const bool *const bits, const size_t len) {
-  uint8_t remainder = 0;
+static uint16_t crc16(const bool *const bits, const size_t len) {
+  uint16_t remainder = 0;
   for (int i = 0; i < len; i++) {
-    if (remainder & 0x80) {
-      remainder = (remainder << 1) ^ 0x39;
+    if (remainder & 0x8000) {
+      remainder = (remainder << 1) ^ 0x2F15;
     } else {
       remainder <<= 1;
     }
@@ -71,7 +71,7 @@ void phy_transmit_frame(const bool *const bits, const size_t len) {
     encode_bit(bits[i]);
   }
   bool crc_bits[CRC_BITS];
-  decompose_u8(crc8(bits, len), crc_bits);
+  decompose_u16(crc16(bits, len), crc_bits);
   for (int i = 0; i < CRC_BITS; i++) {
     encode_bit(crc_bits[i]);
   }
@@ -194,7 +194,7 @@ void *phy_receive_loop(void *args) {
           len_pos = 0;
           payload_pos = 0;
           crc_pos = 0;
-          if (has_ack && crc8(bits, payload_len) != compose_u8(crc_bits)) {
+          if (has_ack && crc16(bits, payload_len) != compose_u16(crc_bits)) {
             continue;
           }
           memcpy(received_bits, bits, payload_len * sizeof(bool));
