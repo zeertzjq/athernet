@@ -186,10 +186,11 @@ int main(int argc, char **argv) {
           if (node_type == NODE_PERF) {
             static int64_t total_bits = 0;
             total_bits += transmit_len;
-            fprintf(stderr, "%lf\n",
+            fprintf(stderr, "%lf bps\n",
                     total_bits / ((time_ns() - time_initial) / 1e9));
           } else if (node_type == NODE_PING) {
-            fprintf(stderr, "%lf\n", (time_ns() - time_transmit_start) / 1e6);
+            fprintf(stderr, "%lf ms\n",
+                    (time_ns() - time_transmit_start) / 1e6);
           }
           transmit_seq = (transmit_seq + 1) & 0xF;
           mac_transmit_prepare();
