@@ -52,6 +52,7 @@ static void output_frame(const bool *const bits, const size_t len) {
 
 static int addr_self = 0;
 static int addr_other = 0;
+static bool noisy = false;
 
 enum {
   FRAME_DATA = 0,
@@ -84,7 +85,7 @@ static void mac_transmit_retry(void) {
   if (node_type == NODE_PING) {
     time_transmit_start = time_ns();
   }
-  phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
+  phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len, noisy);
   time_transmit_end = time_ns();
 }
 
@@ -94,7 +95,7 @@ static size_t mac_transmit_frame(const int seq) {
   int num_retries = node_type == NODE_DATA ? 8 : 1;
   const int64_t time_start = node_type == NODE_PING ? time_ns() : 0;
   do {
-    phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len);
+    phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_len, noisy);
     int64_t timeout = node_type == NODE_PING ? 2000000000 : 100000000;
     while (phy_poll_frame(&timeout)) {
       if (phy_received_len > MAC_HEADER_LEN) {
@@ -134,7 +135,7 @@ static void mac_send_ack(const int seq) {
   const uint16_t ack_header = MAC_HEADER(addr_other, addr_self, FRAME_ACK, seq);
   bool ack_bits[MAC_HEADER_LEN];
   decompose_u16(ack_header, ack_bits);
-  phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+  phy_transmit_frame(ack_bits, MAC_HEADER_LEN, noisy);
 }
 
 static size_t mac_receive_frame(const int seq) {
