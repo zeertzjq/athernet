@@ -134,7 +134,9 @@ static void mac_send_ack(const int seq) {
   const uint16_t ack_header = MAC_HEADER(addr_other, addr_self, FRAME_ACK, seq);
   bool ack_bits[MAC_HEADER_LEN];
   decompose_u16(ack_header, ack_bits);
-  phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+  for (int i = 0; i < (noisy ? 3 : 1); i++) {
+    phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+  }
 }
 
 static size_t mac_receive_frame(const int seq) {
@@ -201,7 +203,9 @@ int main(int argc, char **argv) {
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  const int64_t ack_timeout = node_type == NODE_PING ? 2000000000 : 100000000;
+  const int64_t ack_timeout = node_type == NODE_PING ? 2000000000
+                              : noisy                ? 300000000
+                                                     : 100000000;
 
   if (transmit) {
     mac_transmit_prepare();
@@ -218,7 +222,7 @@ int main(int argc, char **argv) {
   const int64_t end_timeout = noisy ? 2000000000 : 200000000;
 
   while (transmit || receive) {
-    int64_t poll_timeout = 10000000;
+    int64_t poll_timeout = noisy ? ack_timeout : 10000000;
     if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
