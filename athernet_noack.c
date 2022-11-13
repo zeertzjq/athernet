@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
     for (int i = 0; i < transmit_cnt; i++) {
       bool bits[PHY_PAYLOAD_FIXED];
       input_frame(bits, PHY_PAYLOAD_FIXED);
-      phy_transmit_frame(bits, PHY_PAYLOAD_FIXED, false);
+      phy_transmit_frame(bits, PHY_PAYLOAD_FIXED);
     }
     playback_stop();
   } else if (receive_cnt > 0 && transmit_cnt == 0) {
