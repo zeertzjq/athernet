@@ -11,6 +11,15 @@
 #include <sys/socket.h>
 #include <time.h>
 
+static uint16_t inet_checksum(const uint16_t *words, int count) {
+  uint16_t res = 0;
+  while (--count >= 0) {
+    uint32_t tmp = res + *words++;
+    res = (tmp >> 16) + (tmp & 0xFFFF);
+  }
+  return ~res;
+}
+
 int main(int argc, char **argv) {
   if (argc <= 1) {
     fprintf(stderr, "Missing argument\n");
@@ -39,27 +48,37 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+  int socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
   if (socket_fd < 0) {
     perror(NULL);
     return EXIT_FAILURE;
   }
 
-  char ip_payload[sizeof(struct udphdr) + 50];
-  char *udp_payload = ip_payload + sizeof(struct udphdr);
+  char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 50];
+  struct iphdr *ip_hdr_p = (struct iphdr *)raw_payload;
+  *ip_hdr_p = (struct iphdr){
+      .ihl = 5,
+      .version = 4,
+      .ttl = 255,
+      .protocol = IPPROTO_UDP,
+      .daddr = dest_addr.sin_addr.s_addr,
+  };
+  char *ip_payload = raw_payload + sizeof(struct iphdr);
   struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
   *udp_hdr_p = (struct udphdr){
       .uh_sport = 0,
       .uh_dport = htons(port),
   };
+  char *udp_payload = ip_payload + sizeof(struct udphdr);
   while (fgets(udp_payload, 50, stdin) != NULL) {
     size_t udp_payload_len = strlen(udp_payload);
     if (udp_payload[udp_payload_len - 1] == '\n') {
       udp_payload[--udp_payload_len] = '\0';
     }
-    size_t ip_payload_len = udp_payload_len + sizeof(struct udphdr);
+    size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    if (sendto(socket_fd, ip_payload, ip_payload_len, 0,
+    size_t raw_payload_len = (udp_payload - raw_payload) + udp_payload_len;
+    if (sendto(socket_fd, raw_payload, raw_payload_len, 0,
                (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
       perror(NULL);
       continue;
