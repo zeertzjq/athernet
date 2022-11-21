@@ -25,8 +25,8 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Invalid port number: %d\n", port);
     return EXIT_FAILURE;
   }
-
   *port_str = '\0';
+
   char *addr = argv[1];
   struct sockaddr_in dest_addr = {
       .sin_family = AF_INET,

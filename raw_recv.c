@@ -16,6 +16,17 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  char *port_str = strchr(argv[1], ':');
+  int port = -1;
+  if (port_str != NULL) {
+    port = atoi(port_str + 1);
+    if (port < 0 || port > UINT16_MAX) {
+      fprintf(stderr, "Invalid port number: %d\n", port);
+      return EXIT_FAILURE;
+    }
+    *port_str = '\0';
+  }
+
   struct sockaddr_in bind_addr = {
       .sin_family = AF_INET,
       .sin_port = 0,
@@ -52,6 +63,9 @@ int main(int argc, char **argv) {
     }
     char *ip_payload = raw_payload + sizeof(struct iphdr);
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+    if (port >= 0 && ntohs(udp_hdr_p->dest) != port) {
+      continue;
+    }
     char *udp_payload = ip_payload + sizeof(struct udphdr);
     printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
            addr, ntohs(udp_hdr_p->source), ntohs(udp_hdr_p->dest), udp_payload);
