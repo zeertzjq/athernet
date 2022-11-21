@@ -11,15 +11,6 @@
 #include <sys/socket.h>
 #include <time.h>
 
-static uint16_t inet_checksum(const uint16_t *words, int count) {
-  uint16_t res = 0;
-  while (--count >= 0) {
-    uint32_t tmp = res + *words++;
-    res = (tmp >> 16) + (tmp & 0xFFFF);
-  }
-  return ~res;
-}
-
 int main(int argc, char **argv) {
   if (argc <= 1) {
     fprintf(stderr, "Missing argument\n");
