@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <time.h>
 
 int main(int argc, char **argv) {
   if (argc <= 1) {
@@ -28,11 +27,11 @@ int main(int argc, char **argv) {
 
   *port_str = '\0';
   char *addr = argv[1];
-  struct sockaddr_in dest_addr = {
+  struct sockaddr_in bind_addr = {
       .sin_family = AF_INET,
       .sin_port = htons(port),
   };
-  if (inet_pton(AF_INET, addr, &dest_addr.sin_addr) == 0) {
+  if (inet_pton(AF_INET, addr, &bind_addr.sin_addr) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", addr);
     return EXIT_FAILURE;
   }
@@ -42,12 +41,6 @@ int main(int argc, char **argv) {
     perror(NULL);
     return EXIT_FAILURE;
   }
-
-  struct sockaddr_in bind_addr = {
-      .sin_family = AF_INET,
-      .sin_port = htons(port),
-      .sin_addr = INADDR_ANY,
-  };
   if (bind(socket_fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
     perror(NULL);
     return EXIT_FAILURE;
