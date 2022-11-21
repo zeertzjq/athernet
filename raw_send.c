@@ -45,30 +45,30 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  srand(time(NULL));
-  for (int i = 0; i < 10; i++) {
-    struct timespec ts = {
-        .tv_sec = 1,
-    };
-    nanosleep(&ts, NULL);
-    char ip_payload[sizeof(struct udphdr) + 21];
-    for (int j = sizeof(struct udphdr); j < sizeof(ip_payload) - 1; j++) {
-      ip_payload[j] = '!' + (rand() & 0x3F);
+  char ip_payload[sizeof(struct udphdr) + 50];
+  char *udp_payload = ip_payload + sizeof(struct udphdr);
+  struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+  *udp_hdr_p = (struct udphdr){
+      .uh_sport = 0,
+      .uh_dport = htons(port),
+  };
+  while (fgets(udp_payload, 50, stdin) != NULL) {
+    size_t udp_payload_len = strlen(udp_payload);
+    if (udp_payload[udp_payload_len - 1] == '\n') {
+      udp_payload[--udp_payload_len] = '\0';
     }
-    ip_payload[sizeof(ip_payload) - 1] = '\0';
-    struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-    *udp_hdr_p = (struct udphdr){
-        .uh_sport = 0,
-        .uh_dport = htons(port),
-        .uh_ulen = htons(sizeof(ip_payload) - 1),
-        .uh_sum = 0,
-    };
-    if (sendto(socket_fd, ip_payload, sizeof(ip_payload) - 1, 0,
+    size_t ip_payload_len = udp_payload_len + sizeof(struct udphdr);
+    udp_hdr_p->uh_ulen = htons(ip_payload_len);
+    if (sendto(socket_fd, ip_payload, ip_payload_len, 0,
                (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
       perror(NULL);
       continue;
     }
-    printf("Sent Payload: %s\n", ip_payload + sizeof(struct udphdr));
+    printf("Sent Payload: %s\n", udp_payload);
+    struct timespec ts = {
+        .tv_nsec = 500000000,
+    };
+    nanosleep(&ts, NULL);
   }
 
   return EXIT_SUCCESS;

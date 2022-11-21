@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
   for (;;) {
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
-    char payload[40];
+    char payload[50];
     if (recvfrom(socket_fd, payload, sizeof(payload) - 1, 0,
                  (struct sockaddr *)&src_addr, &addrlen) < 0) {
       perror(NULL);
