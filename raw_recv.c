@@ -35,12 +35,12 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  for (int i = 0; i < 10; i++) {
+  for (;;) {
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
-    char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) +
-                     sizeof(uint32_t)];
-    if (recvfrom(socket_fd, &raw_payload, sizeof(raw_payload), 0,
+    char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 40];
+    memset(raw_payload, 0, sizeof(raw_payload));
+    if (recvfrom(socket_fd, &raw_payload, sizeof(raw_payload) - 1, 0,
                  (struct sockaddr *)&src_addr, &addrlen) < 0) {
       perror(NULL);
       continue;
@@ -53,10 +53,7 @@ int main(int argc, char **argv) {
     char *ip_payload = raw_payload + sizeof(struct iphdr);
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
-    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %u\n",
-           addr, ntohs(udp_hdr_p->source), ntohs(udp_hdr_p->dest),
-           ntohl(*(uint32_t *)udp_payload));
+    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
+           addr, ntohs(udp_hdr_p->source), ntohs(udp_hdr_p->dest), udp_payload);
   }
-
-  return EXIT_SUCCESS;
 }

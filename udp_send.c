@@ -43,19 +43,23 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  srand(time(NULL));
   for (int i = 0; i < 10; i++) {
     struct timespec ts = {
         .tv_sec = 1,
     };
     nanosleep(&ts, NULL);
-    uint32_t payload_h = time(NULL);
-    uint32_t payload_n = htonl(payload_h);
-    if (sendto(socket_fd, &payload_n, sizeof(payload_n), 0,
+    char payload[21];
+    for (int j = 0; j < sizeof(payload) - 1; j++) {
+      payload[j] = '!' + (rand() & 0x3F);
+    }
+    payload[sizeof(payload) - 1] = '\0';
+    if (sendto(socket_fd, payload, sizeof(payload) - 1, 0,
                (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
       perror(NULL);
       continue;
     }
-    printf("Sent Payload: %u\n", payload_h);
+    printf("Sent Payload: %s\n", payload);
   }
 
   return EXIT_SUCCESS;

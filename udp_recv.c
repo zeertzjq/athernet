@@ -49,8 +49,8 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 10; i++) {
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
-    uint32_t payload_n;
-    if (recvfrom(socket_fd, &payload_n, sizeof(payload_n), 0,
+    char payload[40];
+    if (recvfrom(socket_fd, payload, sizeof(payload) - 1, 0,
                  (struct sockaddr *)&src_addr, &addrlen) < 0) {
       perror(NULL);
       continue;
@@ -60,8 +60,8 @@ int main(int argc, char **argv) {
       perror(NULL);
       continue;
     }
-    printf("Received IP: %s, Source Port: %hu, Payload: %u\n", addr,
-           ntohs(src_addr.sin_port), ntohl(payload_n));
+    printf("Received IP: %s, Source Port: %hu, Payload: %s\n", addr,
+           ntohs(src_addr.sin_port), payload);
   }
 
   return EXIT_SUCCESS;
