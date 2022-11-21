@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     char *addr = argv[1];
     struct sockaddr_in dest_addr = {
         .sin_family = AF_INET,
-        .sin_port = port,
+        .sin_port = htons(port),
     };
     if (inet_pton(AF_INET, addr, &dest_addr.sin_addr) == 0) {
       fprintf(stderr, "Invalid IP address: %s\n", addr);
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in bind_addr = {
         .sin_family = AF_INET,
-        .sin_port = port,
+        .sin_port = htons(port),
         .sin_addr = INADDR_ANY,
     };
     if (bind(socket_fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
         continue;
       }
       printf("Received IP: %s, Port: %hu, Payload: %u\n", addr,
-             src_addr.sin_port, ntohl(payload_n));
+             ntohs(src_addr.sin_port), ntohl(payload_n));
     }
   }
 
