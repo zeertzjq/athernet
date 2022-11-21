@@ -60,8 +60,8 @@ int main(int argc, char **argv) {
       perror(NULL);
       continue;
     }
-    printf("Received IP: %s, Source Port: %hu, Payload: %s\n", addr,
-           ntohs(src_addr.sin_port), payload);
+    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
+           addr, ntohs(src_addr.sin_port), ntohs(bind_addr.sin_port), payload);
   }
 
   return EXIT_SUCCESS;
