@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  for (int i = 0; i < 10; i++) {
+  for (;;) {
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
     char payload[40];
@@ -63,6 +63,4 @@ int main(int argc, char **argv) {
     printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
            addr, ntohs(src_addr.sin_port), ntohs(bind_addr.sin_port), payload);
   }
-
-  return EXIT_SUCCESS;
 }
