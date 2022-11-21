@@ -19,9 +19,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Missing port number\n");
     return EXIT_FAILURE;
   }
-  int port = atoi(port_str + 1);
-  if (port < 0 || port > UINT16_MAX) {
-    fprintf(stderr, "Invalid port number: %d\n", port);
+  int bind_port = atoi(port_str + 1);
+  if (bind_port < 0 || bind_port > UINT16_MAX) {
+    fprintf(stderr, "Invalid port number: %d\n", bind_port);
     return EXIT_FAILURE;
   }
   *port_str = '\0';
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
   char *addr = argv[1];
   struct sockaddr_in bind_addr = {
       .sin_family = AF_INET,
-      .sin_port = htons(port),
+      .sin_port = htons(bind_port),
   };
   if (inet_pton(AF_INET, addr, &bind_addr.sin_addr) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", addr);
