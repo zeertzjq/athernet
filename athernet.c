@@ -78,9 +78,6 @@ static void mac_transmit_prepare(void) {
 }
 
 static void mac_transmit_retry(void) {
-  if (!noisy) {
-    num_retries--;
-  }
   if (node_type == NODE_PING) {
     time_transmit_start = time_ns();
   }
@@ -92,9 +89,7 @@ static void mac_send_ack(const int seq) {
   const uint16_t ack_header = MAC_HEADER(addr_other, addr_self, FRAME_ACK, seq);
   bool ack_bits[MAC_HEADER_LEN];
   decompose_u16(ack_header, ack_bits);
-  for (int i = 0; i < (noisy ? 3 : 1); i++) {
-    phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
-  }
+  phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
 }
 
 int main(int argc, char **argv) {
@@ -104,8 +99,6 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
-    } else if (strcmp(argv[i], "--noisy") == 0) {
-      noisy = true;
     } else if (strcmp(argv[i], "--transmit") == 0) {
       transmit = true;
     } else if (strcmp(argv[i], "--receive") == 0) {
@@ -140,9 +133,7 @@ int main(int argc, char **argv) {
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  const int64_t ack_timeout = node_type == NODE_PING ? 2000000000
-                              : noisy                ? 300000000
-                                                     : 100000000;
+  const int64_t ack_timeout = node_type == NODE_PING ? 2000000000 : 100000000;
 
   if (transmit) {
     mac_transmit_prepare();
@@ -156,10 +147,10 @@ int main(int argc, char **argv) {
 
   bool receive_end = false;
   int64_t receive_end_time = 0;
-  const int64_t end_timeout = noisy ? 2000000000 : 200000000;
+  const int64_t end_timeout = 200000000;
 
   while (transmit || receive) {
-    int64_t poll_timeout = noisy ? ack_timeout : 10000000;
+    int64_t poll_timeout = 10000000;
     if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;

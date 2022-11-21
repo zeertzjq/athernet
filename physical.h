@@ -11,7 +11,6 @@
 
 extern int volume;
 extern bool has_ack;
-extern bool noisy;
 extern volatile sig_atomic_t phy_received_len;
 extern volatile sig_atomic_t phy_receiving_frame;
 extern volatile sig_atomic_t phy_receive_stopped;
