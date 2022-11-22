@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
   char *ip_payload = raw_payload + sizeof(struct iphdr);
   struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
   *udp_hdr_p = (struct udphdr){
-      .uh_sport = 0,
+      .uh_sport = htons(33333),
       .uh_dport = htons(dest_port),
   };
   char *udp_payload = ip_payload + sizeof(struct udphdr);
