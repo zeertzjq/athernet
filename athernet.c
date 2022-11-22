@@ -43,7 +43,6 @@ static int64_t time_transmit_start = 0;
 static int64_t time_ack_timeout = 0;
 
 static struct in_addr addr_host;
-static struct in_addr addr_nat;
 
 static int send_fd = -1;
 static int recv_fd = -1;
@@ -211,10 +210,6 @@ int main(int argc, char **argv) {
 
   if (inet_pton(AF_INET, "192.168.1.2", &addr_host) == 0) {
     fprintf(stderr, "Cannot convert 192.168.1.2\n");
-    return EXIT_FAILURE;
-  }
-  if (inet_pton(AF_INET, "192.168.1.1", &addr_nat) == 0) {
-    fprintf(stderr, "Cannot convert 192.168.1.1\n");
     return EXIT_FAILURE;
   }
 
