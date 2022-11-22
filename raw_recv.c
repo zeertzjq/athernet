@@ -16,7 +16,8 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  char *port_str = strchr(argv[1], ':');
+  char *addr_str = argv[1];
+  char *port_str = strchr(addr_str, ':');
   int filter_port = -1;
   if (port_str != NULL) {
     filter_port = atoi(port_str + 1);
@@ -27,13 +28,12 @@ int main(int argc, char **argv) {
     *port_str = '\0';
   }
 
-  char *addr = argv[1];
   struct sockaddr_in bind_addr = {
       .sin_family = AF_INET,
       .sin_port = 0,
   };
-  if (inet_pton(AF_INET, addr, &bind_addr.sin_addr) == 0) {
-    fprintf(stderr, "Invalid IP address: %s\n", argv[1]);
+  if (inet_pton(AF_INET, addr_str, &bind_addr.sin_addr) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", addr_str);
     return EXIT_FAILURE;
   }
 

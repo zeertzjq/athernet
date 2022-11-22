@@ -17,25 +17,25 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  char *port_str = strchr(argv[1], ':');
+  char *addr_str = argv[1];
+  char *port_str = strchr(addr_str, ':');
   if (port_str == NULL) {
     fprintf(stderr, "Missing port number\n");
     return EXIT_FAILURE;
   }
-  int port = atoi(port_str + 1);
-  if (port < 0 || port > UINT16_MAX) {
-    fprintf(stderr, "Invalid port number: %d\n", port);
+  int dest_port = atoi(port_str + 1);
+  if (dest_port < 0 || dest_port > UINT16_MAX) {
+    fprintf(stderr, "Invalid port number: %d\n", dest_port);
     return EXIT_FAILURE;
   }
   *port_str = '\0';
 
-  char *addr = argv[1];
   struct sockaddr_in dest_addr = {
       .sin_family = AF_INET,
       .sin_port = 0,
   };
-  if (inet_pton(AF_INET, addr, &dest_addr.sin_addr) == 0) {
-    fprintf(stderr, "Invalid IP address: %s\n", argv[1]);
+  if (inet_pton(AF_INET, addr_str, &dest_addr.sin_addr) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", addr_str);
     return EXIT_FAILURE;
   }
 
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
   struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
   *udp_hdr_p = (struct udphdr){
       .uh_sport = 0,
-      .uh_dport = htons(port),
+      .uh_dport = htons(dest_port),
   };
   char *udp_payload = ip_payload + sizeof(struct udphdr);
   while (fgets(udp_payload, 50, stdin) != NULL) {
