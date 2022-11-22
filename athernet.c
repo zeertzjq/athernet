@@ -82,9 +82,10 @@ static void transmit_prepare(void) {
     ip_hdr_p->daddr = addr_host.s_addr;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      if (udp_hdr_p->uh_dport == htons(22222)) {
-        udp_hdr_p->uh_dport = htons(11111);
+      if (udp_hdr_p->uh_dport != htons(22222)) {
+        return;
       }
+      udp_hdr_p->uh_dport = htons(11111);
     }
     raw_len = len;
   }
@@ -144,9 +145,10 @@ static void handle_recv(const bool *const bits, const size_t len) {
     ip_hdr_p->saddr = 0;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      if (udp_hdr_p->uh_sport == htons(11111)) {
-        udp_hdr_p->uh_sport = htons(22222);
+      if (udp_hdr_p->uh_sport != htons(11111)) {
+        return;
       }
+      udp_hdr_p->uh_sport = htons(22222);
     }
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
