@@ -11,7 +11,6 @@
 
 static enum {
   NODE_DATA,
-  NODE_PERF,
   NODE_PING,
 } node_type = NODE_DATA;
 
@@ -24,11 +23,6 @@ static size_t input_frame(bool *const bits, const size_t max_len) {
         return pos;
       }
       decompose_u8(c, bits + pos);
-    }
-    return max_len;
-  case NODE_PERF:
-    for (size_t pos = 0; pos < max_len; pos += 8) {
-      decompose_u8(rand(), bits + pos);
     }
     return max_len;
   case NODE_PING:
@@ -57,8 +51,6 @@ enum {
   FRAME_DATA = 0,
   FRAME_ACK = 1,
 };
-
-static int64_t time_initial = 0;
 
 static int transmit_seq = 0;
 static bool transmit_bits[PHY_PAYLOAD_MAX];
@@ -103,10 +95,6 @@ int main(int argc, char **argv) {
       transmit = true;
     } else if (strcmp(argv[i], "--receive") == 0) {
       receive = true;
-    } else if (strcmp(argv[i], "--perf") == 0) {
-      node_type = NODE_PERF;
-      transmit = true;
-      receive = true;
     } else if (strcmp(argv[i], "--ping") == 0) {
       node_type = NODE_PING;
       transmit = true;
@@ -123,9 +111,6 @@ int main(int argc, char **argv) {
   if (!transmit && !receive) {
     fprintf(stderr, "Nothing to do\n");
     return EXIT_FAILURE;
-  }
-  if (node_type == NODE_PERF) {
-    srand(time_initial = time_ns());
   }
 
   phy_init();
@@ -174,12 +159,7 @@ int main(int argc, char **argv) {
         if (transmit_len == 0 && node_type == NODE_DATA) {
           transmit = false;
         } else {
-          if (node_type == NODE_PERF) {
-            static int64_t total_bits = 0;
-            total_bits += transmit_len;
-            fprintf(stderr, "%lf bps\n",
-                    total_bits / ((time_ns() - time_initial) / 1e9));
-          } else if (node_type == NODE_PING) {
+          if (node_type == NODE_PING) {
             fprintf(stderr, "%lf ms\n",
                     (time_ns() - time_transmit_start) / 1e6);
           }
