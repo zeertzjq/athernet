@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 
 #include "backend.h"
 #include "common.h"
@@ -17,14 +18,15 @@
 static enum {
   NODE_UDP,
   NODE_ICMP,
+  NODE_NAT,
 } node_type = NODE_UDP;
 
 #define MAC_HEADER_LEN 16
 #define MAC_HEADER(dest, src, type, seq)                                       \
   (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
 
-static int mac_self = 2;
-static int mac_other = 1;
+static int mac_self = 1;
+static int mac_other = 2;
 
 enum {
   FRAME_DATA = 0,
@@ -38,6 +40,11 @@ static size_t transmit_bits_len = 0;
 static uint16_t ack_header_want = 0;
 static int64_t time_transmit_start = 0;
 static int64_t time_ack_timeout = 0;
+
+static struct in_addr addr_host;
+static struct in_addr addr_nat;
+
+static int nat_send_fd = -1;
 
 static void transmit_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
@@ -93,6 +100,7 @@ static void handle_recv(const bool *const bits, const size_t len) {
   for (size_t i = 0; i < len; i += 8) {
     recv_raw[i / 8] = compose_u8(bits + i);
   }
+  size_t raw_payload_len = len / 8;
 
   struct iphdr *ip_hdr_p = (struct iphdr *)recv_raw;
   struct in_addr addr_src = {
@@ -113,6 +121,17 @@ static void handle_recv(const bool *const bits, const size_t len) {
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     (void)icmp_hdr_p;
+  } else if (node_type == NODE_NAT) {
+    ip_hdr_p->saddr = 0;
+    struct sockaddr_in saddr_dest = {
+        .sin_family = AF_INET,
+        .sin_addr = ip_hdr_p->daddr,
+        .sin_port = 0,
+    };
+    if (sendto(nat_send_fd, recv_raw, raw_payload_len, 0,
+               (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
+      perror(NULL);
+    }
   }
 }
 
@@ -133,23 +152,34 @@ int main(int argc, char **argv) {
     node_type = NODE_ICMP;
     transmit = true;
     receive = true;
+  } else if (strcmp(argv[1], "nat") == 0) {
+    node_type = NODE_NAT;
+    transmit = true;
+    receive = true;
+    mac_self = 2;
+    mac_other = 1;
+    nat_send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if (nat_send_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
   } else {
     fprintf(stderr, "Invalid argument: %s\n", argv[1]);
     return EXIT_FAILURE;
   }
 
-  struct in_addr addr_host;
   if (inet_pton(AF_INET, "192.168.1.2", &addr_host) == 0) {
     fprintf(stderr, "Cannot convert 192.168.1.2\n");
     return EXIT_FAILURE;
   }
-  struct in_addr addr_nat;
   if (inet_pton(AF_INET, "192.168.1.1", &addr_nat) == 0) {
     fprintf(stderr, "Cannot convert 192.168.1.1\n");
     return EXIT_FAILURE;
   }
 
-  if (transmit) {
+  int arg_idx = 2;
+
+  if (transmit && node_type != NODE_NAT) {
     if (argc <= 2) {
       fprintf(stderr, "Missing argument\n");
       return EXIT_FAILURE;
@@ -193,9 +223,11 @@ int main(int argc, char **argv) {
         .saddr = addr_host.s_addr,
         .daddr = addr_dest.s_addr,
     };
+
+    arg_idx = 3;
   }
 
-  for (int i = transmit ? 3 : 2; i < argc; i++) {
+  for (int i = arg_idx; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
