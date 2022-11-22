@@ -50,8 +50,7 @@ int main(int argc, char **argv) {
   for (;;) {
     struct sockaddr_in src_addr;
     socklen_t addrlen = sizeof(src_addr);
-    char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 50];
-    memset(raw_payload, 0, sizeof(raw_payload));
+    char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 50] = {0};
     if (recvfrom(socket_fd, &raw_payload, sizeof(raw_payload) - 1, 0,
                  (struct sockaddr *)&src_addr, &addrlen) < 0) {
       perror(NULL);

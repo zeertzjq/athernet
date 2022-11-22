@@ -90,13 +90,22 @@ static void show_frame(const bool *const bits, const size_t len) {
   for (size_t i = 0; i < len; i += 8) {
     recv_raw[i / 8] = compose_u8(bits + i);
   }
+
+  struct iphdr *ip_hdr_p = (struct iphdr *)recv_raw;
+  struct in_addr sin_addr = {
+      .s_addr = ip_hdr_p->saddr,
+  };
+  char addr[INET_ADDRSTRLEN] = {0};
+  if (inet_ntop(AF_INET, &sin_addr, addr, sizeof(addr)) == NULL) {
+    perror(NULL);
+  }
   char *ip_payload = recv_raw + sizeof(struct iphdr);
 
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
     printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
-           "TODO", ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
+           addr, ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
            udp_payload);
   }
 }
