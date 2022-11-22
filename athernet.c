@@ -64,7 +64,7 @@ static bool transmit_prepare(void) {
     };
   }
 
-  num_retries = node_type == 8;
+  num_retries = 8;
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
