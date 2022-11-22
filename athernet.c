@@ -307,11 +307,11 @@ int main(int argc, char **argv) {
       if (receive && (header & 0xFFF0) == receive_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
-        static int receive_seq = 0;
-        if (seq == receive_seq) {
+        static int ack_seq_sent = -1;
+        if (seq != ack_seq_sent) {
           handle_recv(bits + MAC_HEADER_LEN, len);
-          receive_seq = (receive_seq + 1) & 0xF;
         }
+        ack_seq_sent = seq;
       } else if (ack_header_want != 0 && header == ack_header_want) {
         transmit_seq = (transmit_seq + 1) & 0xF;
         ack_header_want = 0;
