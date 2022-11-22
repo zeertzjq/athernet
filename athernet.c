@@ -31,7 +31,7 @@ enum {
 };
 
 static int transmit_seq = 0;
-static char raw_payload[PHY_PAYLOAD_MAX / 8];
+static char send_raw[PHY_PAYLOAD_MAX / 8];
 static bool transmit_bits[PHY_PAYLOAD_MAX];
 static size_t transmit_bits_len = 0;
 static uint16_t ack_header_want = 0;
@@ -40,8 +40,8 @@ static int64_t time_transmit_start = 0;
 static int64_t time_transmit_end = 0;
 
 static bool transmit_prepare(void) {
-  char *ip_payload = raw_payload + sizeof(struct iphdr);
-  size_t raw_payload_len = 0;
+  char *ip_payload = send_raw + sizeof(struct iphdr);
+  size_t raw_len = 0;
 
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
@@ -55,17 +55,17 @@ static bool transmit_prepare(void) {
     }
     size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    raw_payload_len = (udp_payload - raw_payload) + udp_payload_len;
+    raw_len = (udp_payload - send_raw) + udp_payload_len;
   }
 
   num_retries = node_type == NODE_ICMP ? 1 : 8;
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
-  for (size_t i = 0; i < raw_payload_len; i++) {
-    decompose_u8(raw_payload[i], transmit_bits + MAC_HEADER_LEN + i * 8);
+  for (size_t i = 0; i < raw_len; i++) {
+    decompose_u8(send_raw[i], transmit_bits + MAC_HEADER_LEN + i * 8);
   }
-  transmit_bits_len = MAC_HEADER_LEN + raw_payload_len * 8;
+  transmit_bits_len = MAC_HEADER_LEN + raw_len * 8;
   ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, transmit_seq);
   return true;
 }
@@ -83,6 +83,19 @@ static void mac_send_ack(const int seq) {
   bool ack_bits[MAC_HEADER_LEN];
   decompose_u16(ack_header, ack_bits);
   phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
+}
+
+static void show_frame(const bool *const bits, const size_t len) {
+  static char recv_raw[PHY_PAYLOAD_MAX / 8];
+  for (size_t i = 0; i < len; i += 8) {
+    recv_raw[i / 8] = compose_u8(bits + i);
+  }
+  char *ip_payload = recv_raw + sizeof(struct iphdr);
+  struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+  char *udp_payload = ip_payload + sizeof(struct udphdr);
+  printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
+         "TODO", ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
+         udp_payload);
 }
 
 int main(int argc, char **argv) {
@@ -128,7 +141,7 @@ int main(int argc, char **argv) {
       }
       *port_str = '\0';
 
-      char *ip_payload = raw_payload + sizeof(struct iphdr);
+      char *ip_payload = send_raw + sizeof(struct iphdr);
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
       *udp_hdr_p = (struct udphdr){
           .uh_sport = 0,
@@ -145,7 +158,7 @@ int main(int argc, char **argv) {
       return EXIT_FAILURE;
     }
 
-    struct iphdr *ip_hdr_p = (struct iphdr *)raw_payload;
+    struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
     *ip_hdr_p = (struct iphdr){
         .ihl = 5,
         .version = 4,
@@ -199,10 +212,7 @@ int main(int argc, char **argv) {
         if (node_type == NODE_UDP) {
           static int receive_seq = 0;
           if (seq == receive_seq) {
-            for (size_t pos = 0; pos < len; pos += 8) {
-              putchar(compose_u8(bits + pos));
-            }
-            fflush(stdout);
+            show_frame(bits + MAC_HEADER_LEN, len);
             receive_seq = (receive_seq + 1) & 0xF;
           }
         }
