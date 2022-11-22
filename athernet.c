@@ -44,8 +44,8 @@ static void output_frame(const bool *const bits, const size_t len) {
 #define MAC_HEADER(dest, src, type, seq)                                       \
   (((dest) << 12) | ((src) << 8) | ((type) << 4) | (seq))
 
-static int addr_self = 0;
-static int addr_other = 0;
+static int mac_self = 2;
+static int mac_other = 1;
 
 enum {
   FRAME_DATA = 0,
@@ -63,10 +63,10 @@ static int64_t time_transmit_end = 0;
 static void mac_transmit_prepare(void) {
   num_retries = node_type == NODE_PING ? 1 : 8;
   const uint16_t data_header =
-      MAC_HEADER(addr_other, addr_self, FRAME_DATA, transmit_seq);
+      MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
   transmit_len = input_frame(transmit_bits + MAC_HEADER_LEN, 800);
-  ack_header_want = MAC_HEADER(addr_self, addr_other, FRAME_ACK, transmit_seq);
+  ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, transmit_seq);
 }
 
 static void mac_transmit_retry(void) {
@@ -78,7 +78,7 @@ static void mac_transmit_retry(void) {
 }
 
 static void mac_send_ack(const int seq) {
-  const uint16_t ack_header = MAC_HEADER(addr_other, addr_self, FRAME_ACK, seq);
+  const uint16_t ack_header = MAC_HEADER(mac_other, mac_self, FRAME_ACK, seq);
   bool ack_bits[MAC_HEADER_LEN];
   decompose_u16(ack_header, ack_bits);
   phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
@@ -88,29 +88,36 @@ int main(int argc, char **argv) {
   bool transmit = false;
   bool receive = false;
 
-  for (int i = 1; i < argc; i++) {
+  if (argc <= 1) {
+    fprintf(stderr, "Missing argument\n");
+    return EXIT_FAILURE;
+  }
+
+  if (strcmp(argv[1], "send") == 0) {
+    transmit = true;
+  } else if (strcmp(argv[1], "recv") == 0) {
+    receive = true;
+  } else if (strcmp(argv[1], "ping") == 0) {
+    node_type = NODE_PING;
+    transmit = true;
+    receive = true;
+  } else {
+    fprintf(stderr, "Invalid argument: %s\n", argv[1]);
+    return EXIT_FAILURE;
+  }
+
+  if (transmit && argc <= 2) {
+    fprintf(stderr, "Missing argument\n");
+    return EXIT_FAILURE;
+  }
+
+  for (int i = 2; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
-    } else if (strcmp(argv[i], "--transmit") == 0) {
-      transmit = true;
-    } else if (strcmp(argv[i], "--receive") == 0) {
-      receive = true;
-    } else if (strcmp(argv[i], "--ping") == 0) {
-      node_type = NODE_PING;
-      transmit = true;
-      receive = true;
-    } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
-      addr_self = atoi(argv[i] + LEN("--self=")) & 0xF;
-    } else if (strncmp(argv[i], S_LEN("--other=")) == 0) {
-      addr_other = atoi(argv[i] + LEN("--other=")) & 0xF;
     } else {
       fprintf(stderr, "Invalid argument: %s\n", argv[i]);
       return EXIT_FAILURE;
     }
-  }
-  if (!transmit && !receive) {
-    fprintf(stderr, "Nothing to do\n");
-    return EXIT_FAILURE;
   }
 
   phy_init();
@@ -126,9 +133,9 @@ int main(int argc, char **argv) {
   }
 
   const uint16_t receive_ack_header =
-      MAC_HEADER(addr_self, addr_other, FRAME_ACK, 0);
+      MAC_HEADER(mac_self, mac_other, FRAME_ACK, 0);
   const uint16_t receive_data_header =
-      MAC_HEADER(addr_self, addr_other, FRAME_DATA, 0);
+      MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
   bool receive_end = false;
   int64_t receive_end_time = 0;

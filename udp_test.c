@@ -27,6 +27,7 @@ int main(int argc, char **argv) {
     node_type = NODE_RECV;
   } else {
     fprintf(stderr, "Invalid argument: %s\n", argv[1]);
+    return EXIT_FAILURE;
   }
 
   char *addr_str = argv[2];
