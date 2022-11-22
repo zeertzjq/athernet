@@ -58,7 +58,7 @@ static bool transmit_prepare(void) {
     raw_len = (udp_payload - send_raw) + udp_payload_len;
   }
 
-  num_retries = node_type == NODE_ICMP ? 1 : 8;
+  num_retries = node_type == 8;
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
@@ -91,11 +91,14 @@ static void show_frame(const bool *const bits, const size_t len) {
     recv_raw[i / 8] = compose_u8(bits + i);
   }
   char *ip_payload = recv_raw + sizeof(struct iphdr);
-  struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-  char *udp_payload = ip_payload + sizeof(struct udphdr);
-  printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
-         "TODO", ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
-         udp_payload);
+
+  if (node_type == NODE_UDP) {
+    struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+    char *udp_payload = ip_payload + sizeof(struct udphdr);
+    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
+           "TODO", ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
+           udp_payload);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -186,7 +189,7 @@ int main(int argc, char **argv) {
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  const int64_t ack_timeout = node_type == NODE_ICMP ? 2000000000 : 100000000;
+  const int64_t ack_timeout = node_type == 100000000;
 
   if (transmit) {
     transmit = transmit_prepare();
@@ -209,12 +212,10 @@ int main(int argc, char **argv) {
       if (receive && (header & 0xFFF0) == receive_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
-        if (node_type == NODE_UDP) {
-          static int receive_seq = 0;
-          if (seq == receive_seq) {
-            show_frame(bits + MAC_HEADER_LEN, len);
-            receive_seq = (receive_seq + 1) & 0xF;
-          }
+        static int receive_seq = 0;
+        if (seq == receive_seq) {
+          show_frame(bits + MAC_HEADER_LEN, len);
+          receive_seq = (receive_seq + 1) & 0xF;
         }
       } else if (transmit && header == ack_header_want) {
         if (node_type == NODE_ICMP) {
@@ -233,13 +234,7 @@ int main(int argc, char **argv) {
 
     if (transmit && time_now - time_transmit_end > ack_timeout) {
       if (num_retries == 0) {
-        if (node_type == NODE_UDP) {
-          fprintf(stderr, "link error\n");
-        } else {
-          if (node_type == NODE_ICMP) {
-            fprintf(stderr, "TIMEOUT\n");
-          }
-        }
+        fprintf(stderr, "link error\n");
         transmit = transmit_prepare();
         if (transmit) {
           mac_transmit_retry();
