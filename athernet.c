@@ -123,6 +123,10 @@ static void handle_recv(const bool *const bits, const size_t len) {
     (void)icmp_hdr_p;
   } else if (node_type == NODE_NAT) {
     ip_hdr_p->saddr = 0;
+    if (ip_hdr_p->protocol == IPPROTO_UDP) {
+      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+      udp_hdr_p->uh_sport = htons(22222);
+    }
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
         .sin_addr = ip_hdr_p->daddr,
@@ -203,7 +207,7 @@ int main(int argc, char **argv) {
       char *ip_payload = send_raw + sizeof(struct iphdr);
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
       *udp_hdr_p = (struct udphdr){
-          .uh_sport = 0,
+          .uh_sport = htons(11111),
           .uh_dport = htons(dest_port),
       };
     }

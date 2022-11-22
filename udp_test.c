@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     for (;;) {
       struct sockaddr_in saddr_src;
       socklen_t addrlen = sizeof(saddr_src);
-      char payload[50];
+      char payload[50] = {0};
       if (recvfrom(socket_fd, payload, sizeof(payload) - 1, 0,
                    (struct sockaddr *)&saddr_src, &addrlen) < 0) {
         perror(NULL);
