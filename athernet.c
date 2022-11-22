@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
 #include <netinet/udp.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -56,6 +57,11 @@ static bool transmit_prepare(void) {
     size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
     raw_len = (udp_payload - send_raw) + udp_payload_len;
+  } else if (node_type == NODE_ICMP) {
+    struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+    *icmp_hdr_p = (struct icmphdr){
+        .type = ICMP_ECHO,
+    };
   }
 
   num_retries = node_type == 8;
@@ -107,6 +113,9 @@ static void show_frame(const bool *const bits, const size_t len) {
     printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
            addr, ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
            udp_payload);
+  } else if (node_type == NODE_ICMP) {
+    struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+    (void)icmp_hdr_p;
   }
 }
 
@@ -227,9 +236,6 @@ int main(int argc, char **argv) {
           receive_seq = (receive_seq + 1) & 0xF;
         }
       } else if (transmit && header == ack_header_want) {
-        if (node_type == NODE_ICMP) {
-          fprintf(stderr, "%lf ms\n", (time_ns() - time_transmit_start) / 1e6);
-        }
         transmit_seq = (transmit_seq + 1) & 0xF;
         transmit = transmit_prepare();
         if (transmit) {
