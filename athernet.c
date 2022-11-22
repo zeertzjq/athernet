@@ -138,6 +138,17 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  struct in_addr addr_host;
+  if (inet_pton(AF_INET, "192.168.1.2", &addr_host) == 0) {
+    fprintf(stderr, "Cannot convert 192.168.1.2\n");
+    return EXIT_FAILURE;
+  }
+  struct in_addr addr_nat;
+  if (inet_pton(AF_INET, "192.168.1.1", &addr_nat) == 0) {
+    fprintf(stderr, "Cannot convert 192.168.1.1\n");
+    return EXIT_FAILURE;
+  }
+
   if (transmit) {
     if (argc <= 2) {
       fprintf(stderr, "Missing argument\n");
@@ -179,6 +190,7 @@ int main(int argc, char **argv) {
         .version = 4,
         .ttl = 255,
         .protocol = node_type == NODE_UDP ? IPPROTO_UDP : IPPROTO_ICMP,
+        .saddr = addr_host.s_addr,
         .daddr = addr_dest.s_addr,
     };
   }
