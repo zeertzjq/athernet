@@ -95,11 +95,11 @@ static void handle_recv(const bool *const bits, const size_t len) {
   }
 
   struct iphdr *ip_hdr_p = (struct iphdr *)recv_raw;
-  struct in_addr sin_addr = {
+  struct in_addr addr_src = {
       .s_addr = ip_hdr_p->saddr,
   };
   char addr[INET_ADDRSTRLEN] = {0};
-  if (inet_ntop(AF_INET, &sin_addr, addr, sizeof(addr)) == NULL) {
+  if (inet_ntop(AF_INET, &addr_src, addr, sizeof(addr)) == NULL) {
     perror(NULL);
   }
   char *ip_payload = recv_raw + sizeof(struct iphdr);
@@ -167,11 +167,8 @@ int main(int argc, char **argv) {
       };
     }
 
-    struct sockaddr_in dest_addr = {
-        .sin_family = AF_INET,
-        .sin_port = 0,
-    };
-    if (inet_pton(AF_INET, addr_str, &dest_addr.sin_addr) == 0) {
+    struct in_addr addr_dest;
+    if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
       fprintf(stderr, "Invalid IP address: %s\n", addr_str);
       return EXIT_FAILURE;
     }
@@ -182,7 +179,7 @@ int main(int argc, char **argv) {
         .version = 4,
         .ttl = 255,
         .protocol = node_type == NODE_UDP ? IPPROTO_UDP : IPPROTO_ICMP,
-        .daddr = dest_addr.sin_addr.s_addr,
+        .daddr = addr_dest.s_addr,
     };
   }
 

@@ -43,11 +43,11 @@ int main(int argc, char **argv) {
   }
   *port_str = '\0';
 
-  struct sockaddr_in addr_arg = {
+  struct sockaddr_in saddr_arg = {
       .sin_family = AF_INET,
       .sin_port = htons(port_arg),
   };
-  if (inet_pton(AF_INET, addr_str, &addr_arg.sin_addr) == 0) {
+  if (inet_pton(AF_INET, addr_str, &saddr_arg.sin_addr) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", addr_str);
     return EXIT_FAILURE;
   }
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
         payload[--payload_len] = '\0';
       }
       if (sendto(socket_fd, payload, payload_len, 0,
-                 (struct sockaddr *)&addr_arg, sizeof(addr_arg)) < 0) {
+                 (struct sockaddr *)&saddr_arg, sizeof(saddr_arg)) < 0) {
         perror(NULL);
         continue;
       }
@@ -77,26 +77,27 @@ int main(int argc, char **argv) {
       nanosleep(&ts, NULL);
     }
   } else if (node_type == NODE_RECV) {
-    if (bind(socket_fd, (struct sockaddr *)&addr_arg, sizeof(addr_arg)) < 0) {
+    if (bind(socket_fd, (struct sockaddr *)&saddr_arg, sizeof(saddr_arg)) < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
     for (;;) {
-      struct sockaddr_in src_addr;
-      socklen_t addrlen = sizeof(src_addr);
+      struct sockaddr_in saddr_src;
+      socklen_t addrlen = sizeof(saddr_src);
       char payload[50];
       if (recvfrom(socket_fd, payload, sizeof(payload) - 1, 0,
-                   (struct sockaddr *)&src_addr, &addrlen) < 0) {
+                   (struct sockaddr *)&saddr_src, &addrlen) < 0) {
         perror(NULL);
         continue;
       }
       char addr[INET_ADDRSTRLEN];
-      if (inet_ntop(AF_INET, &src_addr.sin_addr, addr, sizeof(addr)) == NULL) {
+      if (inet_ntop(AF_INET, &saddr_src.sin_addr, addr, sizeof(addr)) == NULL) {
         perror(NULL);
         continue;
       }
       printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
-             addr, ntohs(src_addr.sin_port), ntohs(addr_arg.sin_port), payload);
+             addr, ntohs(saddr_src.sin_port), ntohs(saddr_arg.sin_port),
+             payload);
     }
   }
 

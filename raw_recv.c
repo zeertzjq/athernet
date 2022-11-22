@@ -28,11 +28,11 @@ int main(int argc, char **argv) {
     *port_str = '\0';
   }
 
-  struct sockaddr_in bind_addr = {
+  struct sockaddr_in saddr_bind = {
       .sin_family = AF_INET,
       .sin_port = 0,
   };
-  if (inet_pton(AF_INET, addr_str, &bind_addr.sin_addr) == 0) {
+  if (inet_pton(AF_INET, addr_str, &saddr_bind.sin_addr) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", addr_str);
     return EXIT_FAILURE;
   }
@@ -42,22 +42,22 @@ int main(int argc, char **argv) {
     perror(NULL);
     return EXIT_FAILURE;
   }
-  if (bind(socket_fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
+  if (bind(socket_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
     perror(NULL);
     return EXIT_FAILURE;
   }
 
   for (;;) {
-    struct sockaddr_in src_addr;
-    socklen_t addrlen = sizeof(src_addr);
+    struct sockaddr_in saddr_src;
+    socklen_t addrlen = sizeof(saddr_src);
     char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 50] = {0};
     if (recvfrom(socket_fd, &raw_payload, sizeof(raw_payload) - 1, 0,
-                 (struct sockaddr *)&src_addr, &addrlen) < 0) {
+                 (struct sockaddr *)&saddr_src, &addrlen) < 0) {
       perror(NULL);
       continue;
     }
     char addr[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &src_addr.sin_addr, addr, sizeof(addr)) == NULL) {
+    if (inet_ntop(AF_INET, &saddr_src.sin_addr, addr, sizeof(addr)) == NULL) {
       perror(NULL);
       continue;
     }

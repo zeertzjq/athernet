@@ -30,11 +30,11 @@ int main(int argc, char **argv) {
   }
   *port_str = '\0';
 
-  struct sockaddr_in dest_addr = {
+  struct sockaddr_in saddr_dest = {
       .sin_family = AF_INET,
       .sin_port = 0,
   };
-  if (inet_pton(AF_INET, addr_str, &dest_addr.sin_addr) == 0) {
+  if (inet_pton(AF_INET, addr_str, &saddr_dest.sin_addr) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", addr_str);
     return EXIT_FAILURE;
   }
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
       .version = 4,
       .ttl = 255,
       .protocol = IPPROTO_UDP,
-      .daddr = dest_addr.sin_addr.s_addr,
+      .daddr = saddr_dest.sin_addr.s_addr,
   };
   char *ip_payload = raw_payload + sizeof(struct iphdr);
   struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
     size_t raw_payload_len = (udp_payload - raw_payload) + udp_payload_len;
     if (sendto(socket_fd, raw_payload, raw_payload_len, 0,
-               (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
+               (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
       continue;
     }
