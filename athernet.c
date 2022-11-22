@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
@@ -44,7 +45,8 @@ static int64_t time_ack_timeout = 0;
 static struct in_addr addr_host;
 static struct in_addr addr_nat;
 
-static int nat_send_fd = -1;
+static int send_fd = -1;
+static int recv_fd = -1;
 
 static void transmit_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
@@ -68,6 +70,23 @@ static void transmit_prepare(void) {
     *icmp_hdr_p = (struct icmphdr){
         .type = ICMP_ECHO,
     };
+  } else if (node_type == NODE_NAT) {
+    ssize_t len = recvfrom(recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
+    if (len < 0) {
+      if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        perror(NULL);
+      }
+      return;
+    }
+    struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
+    ip_hdr_p->daddr = addr_host.s_addr;
+    if (ip_hdr_p->protocol == IPPROTO_UDP) {
+      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+      if (udp_hdr_p->uh_dport == htons(22222)) {
+        udp_hdr_p->uh_dport = htons(11111);
+      }
+    }
+    raw_len = len;
   }
 
   const uint16_t data_header =
@@ -125,14 +144,16 @@ static void handle_recv(const bool *const bits, const size_t len) {
     ip_hdr_p->saddr = 0;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      udp_hdr_p->uh_sport = htons(22222);
+      if (udp_hdr_p->uh_sport == htons(11111)) {
+        udp_hdr_p->uh_sport = htons(22222);
+      }
     }
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
         .sin_addr = ip_hdr_p->daddr,
         .sin_port = 0,
     };
-    if (sendto(nat_send_fd, recv_raw, raw_payload_len, 0,
+    if (sendto(send_fd, recv_raw, raw_payload_len, 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
     }
@@ -162,8 +183,22 @@ int main(int argc, char **argv) {
     receive = true;
     mac_self = 2;
     mac_other = 1;
-    nat_send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if (nat_send_fd < 0) {
+    send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if (send_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    if (recv_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    struct sockaddr_in saddr_bind = {
+        .sin_family = AF_INET,
+        .sin_port = htons(22222),
+        .sin_addr = INADDR_ANY,
+    };
+    if (bind(recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
