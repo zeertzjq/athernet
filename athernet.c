@@ -91,7 +91,7 @@ static void mac_send_ack(const int seq) {
   phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
 }
 
-static void show_frame(const bool *const bits, const size_t len) {
+static void handle_recv(const bool *const bits, const size_t len) {
   static char recv_raw[PHY_PAYLOAD_MAX / 8];
   for (size_t i = 0; i < len; i += 8) {
     recv_raw[i / 8] = compose_u8(bits + i);
@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
         mac_send_ack(seq);
         static int receive_seq = 0;
         if (seq == receive_seq) {
-          show_frame(bits + MAC_HEADER_LEN, len);
+          handle_recv(bits + MAC_HEADER_LEN, len);
           receive_seq = (receive_seq + 1) & 0xF;
         }
       } else if (transmit && header == ack_header_want) {
