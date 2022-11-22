@@ -6,11 +6,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PHY_PAYLOAD_FIXED 200
 #define PHY_PAYLOAD_MAX 1000
 
 extern int volume;
-extern bool has_ack;
 extern volatile sig_atomic_t phy_received_len;
 extern volatile sig_atomic_t phy_receiving_frame;
 extern volatile sig_atomic_t phy_receive_stopped;

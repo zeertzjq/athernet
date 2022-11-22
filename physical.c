@@ -18,7 +18,6 @@
 #define SLEEP_NS ((1000000000 / RATE) * 3)
 
 int volume = 16384;
-bool has_ack = true;
 static bool phy_received_bits[PHY_PAYLOAD_MAX];
 volatile sig_atomic_t phy_received_len = -1;
 volatile sig_atomic_t phy_receiving_frame = 0;
@@ -62,12 +61,10 @@ static volatile sig_atomic_t capture_volume = 0;
 
 void phy_transmit_frame(const bool *const bits, const size_t len) {
   playback_len = PREAMBLE_LEN;
-  if (has_ack) {
-    bool len_bits[LEN_BITS];
-    decompose_u16(len, len_bits);
-    for (int i = 0; i < LEN_BITS; i++) {
-      encode_bit(len_bits[i]);
-    }
+  bool len_bits[LEN_BITS];
+  decompose_u16(len, len_bits);
+  for (int i = 0; i < LEN_BITS; i++) {
+    encode_bit(len_bits[i]);
   }
   for (int i = 0; i < len; i++) {
     encode_bit(bits[i]);
@@ -139,7 +136,7 @@ void *phy_receive_loop(void *args) {
   size_t bit_pos = 0;
   bool len_bits[LEN_BITS];
   size_t len_pos = 0;
-  size_t payload_len = PHY_PAYLOAD_FIXED;
+  size_t payload_len = 0;
   bool bits[PHY_PAYLOAD_MAX];
   size_t payload_pos = 0;
   bool crc_bits[CRC_BITS];
@@ -159,7 +156,7 @@ void *phy_receive_loop(void *args) {
       }
       if (bit_pos == BIT_LEN) {
         bit_pos = 0;
-        if (has_ack && len_pos < LEN_BITS) {
+        if (len_pos < LEN_BITS) {
           len_bits[len_pos++] = decode_bit(bit_buf);
           if (len_pos == LEN_BITS) {
             const size_t len = compose_u16(len_bits);
@@ -184,7 +181,7 @@ void *phy_receive_loop(void *args) {
           payload_pos = 0;
           crc_pos = 0;
           phy_receiving_frame = 0;
-          if (has_ack && crc32(bits, payload_len) != compose_u32(crc_bits)) {
+          if (crc32(bits, payload_len) != compose_u32(crc_bits)) {
             continue;
           }
           memcpy(phy_received_bits, bits, payload_len * sizeof(bool));
