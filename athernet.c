@@ -77,7 +77,7 @@ static void mac_transmit_retry(void) {
   if (node_type == NODE_ICMP) {
     time_transmit_start = time_ns();
   }
-  phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_bits_len);
+  phy_transmit_frame(transmit_bits, transmit_bits_len);
   time_ack_timeout = time_ns() + 100000000;
 }
 
@@ -89,7 +89,7 @@ static void mac_send_ack(const int seq) {
 }
 
 static void handle_recv(const bool *const bits, const size_t len) {
-  static char recv_raw[PHY_PAYLOAD_MAX / 8];
+  char recv_raw[PHY_PAYLOAD_MAX / 8] = {0};
   for (size_t i = 0; i < len; i += 8) {
     recv_raw[i / 8] = compose_u8(bits + i);
   }
