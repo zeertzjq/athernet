@@ -294,7 +294,7 @@ int main(int argc, char **argv) {
       transmit_prepare();
       if (ack_header_want != 0) {
         mac_transmit_retry();
-      } else if (node_type == NODE_UDP) {
+      } else if (node_type != NODE_NAT) {
         transmit = false;
       }
     }
