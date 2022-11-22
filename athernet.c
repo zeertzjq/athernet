@@ -36,11 +36,10 @@ static char send_raw[PHY_PAYLOAD_MAX / 8];
 static bool transmit_bits[PHY_PAYLOAD_MAX];
 static size_t transmit_bits_len = 0;
 static uint16_t ack_header_want = 0;
-static int num_retries = 0;
 static int64_t time_transmit_start = 0;
-static int64_t time_transmit_end = 0;
+static int64_t time_ack_timeout = 0;
 
-static bool transmit_prepare(void) {
+static void transmit_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
   size_t raw_len = 0;
 
@@ -48,7 +47,7 @@ static bool transmit_prepare(void) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
     if (fgets(udp_payload, 50, stdin) == NULL) {
-      return false;
+      return;
     }
     size_t udp_payload_len = strlen(udp_payload);
     if (udp_payload[udp_payload_len - 1] == '\n') {
@@ -64,7 +63,6 @@ static bool transmit_prepare(void) {
     };
   }
 
-  num_retries = 8;
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
   decompose_u16(data_header, transmit_bits);
@@ -73,7 +71,6 @@ static bool transmit_prepare(void) {
   }
   transmit_bits_len = MAC_HEADER_LEN + raw_len * 8;
   ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, transmit_seq);
-  return true;
 }
 
 static void mac_transmit_retry(void) {
@@ -81,7 +78,7 @@ static void mac_transmit_retry(void) {
     time_transmit_start = time_ns();
   }
   phy_transmit_frame(transmit_bits, MAC_HEADER_LEN + transmit_bits_len);
-  time_transmit_end = time_ns();
+  time_ack_timeout = time_ns() + 100000000;
 }
 
 static void mac_send_ack(const int seq) {
@@ -207,21 +204,21 @@ int main(int argc, char **argv) {
   pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  const int64_t ack_timeout = node_type == 100000000;
-
-  if (transmit) {
-    transmit = transmit_prepare();
-    if (transmit) {
-      mac_transmit_retry();
-    }
-  }
-
   const uint16_t receive_ack_header =
       MAC_HEADER(mac_self, mac_other, FRAME_ACK, 0);
   const uint16_t receive_data_header =
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
   while (transmit || receive) {
+    if (transmit && ack_header_want == 0) {
+      transmit_prepare();
+      if (ack_header_want != 0) {
+        mac_transmit_retry();
+      } else if (node_type == NODE_UDP) {
+        transmit = false;
+      }
+    }
+
     int64_t poll_timeout = 10000000;
     if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
@@ -235,28 +232,15 @@ int main(int argc, char **argv) {
           handle_recv(bits + MAC_HEADER_LEN, len);
           receive_seq = (receive_seq + 1) & 0xF;
         }
-      } else if (transmit && header == ack_header_want) {
+      } else if (ack_header_want != 0 && header == ack_header_want) {
         transmit_seq = (transmit_seq + 1) & 0xF;
-        transmit = transmit_prepare();
-        if (transmit) {
-          mac_transmit_retry();
-        }
+        ack_header_want = 0;
       }
       continue;
     }
 
-    const int64_t time_now = time_ns();
-
-    if (transmit && time_now - time_transmit_end > ack_timeout) {
-      if (num_retries == 0) {
-        fprintf(stderr, "link error\n");
-        transmit = transmit_prepare();
-        if (transmit) {
-          mac_transmit_retry();
-        }
-      } else {
-        mac_transmit_retry();
-      }
+    if (ack_header_want != 0 && time_ns() > time_ack_timeout) {
+      mac_transmit_retry();
     }
   }
 
