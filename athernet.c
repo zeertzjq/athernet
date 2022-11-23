@@ -46,6 +46,8 @@ static struct in_addr addr_host;
 
 static int send_fd = -1;
 static int recv_fd = -1;
+static int udp_fd = -1;
+static int icmp_fd = -1;
 
 static void transmit_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
@@ -69,6 +71,7 @@ static void transmit_prepare(void) {
     *icmp_hdr_p = (struct icmphdr){
         .type = ICMP_ECHO,
     };
+    // TODO
   } else if (node_type == NODE_NAT) {
     ssize_t len = recvfrom(recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
     if (len < 0) {
@@ -85,6 +88,8 @@ static void transmit_prepare(void) {
         return;
       }
       udp_hdr_p->uh_dport = htons(11111);
+    } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
+      // TODO
     }
     raw_len = len;
   }
@@ -139,7 +144,7 @@ static void handle_recv(const bool *const bits, const size_t len) {
            udp_payload);
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    (void)icmp_hdr_p;
+    // TODO
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
       return;
@@ -151,6 +156,10 @@ static void handle_recv(const bool *const bits, const size_t len) {
         return;
       }
       udp_hdr_p->uh_sport = htons(22222);
+      recv_fd = udp_fd;
+    } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
+      // TODO
+      recv_fd = icmp_fd;
     }
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
@@ -192,8 +201,13 @@ int main(int argc, char **argv) {
       perror(NULL);
       return EXIT_FAILURE;
     }
-    recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-    if (recv_fd < 0) {
+    recv_fd = udp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    if (udp_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    icmp_fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if (icmp_fd < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
