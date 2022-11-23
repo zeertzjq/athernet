@@ -141,6 +141,9 @@ static void handle_recv(const bool *const bits, const size_t len) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     (void)icmp_hdr_p;
   } else if (node_type == NODE_NAT) {
+    if (ip_hdr_p->saddr != addr_host.s_addr) {
+      return;
+    }
     ip_hdr_p->saddr = 0;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
