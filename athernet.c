@@ -65,7 +65,8 @@ static void send_prepare(void) {
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
-    if (fgets(udp_payload, 50, stdin) == NULL) {
+    if (fgets(udp_payload, sizeof(send_raw) - (udp_payload - send_raw),
+              stdin) == NULL) {
       return;
     }
     size_t udp_payload_len = strlen(udp_payload);
