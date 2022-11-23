@@ -81,7 +81,7 @@ static void send_prepare(void) {
     if (send_seq == 10) {
       return;
     }
-    if (send_seq > 0 && time_ns() - time_ping[send_seq] < 1000000000) {
+    if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
       return;
     }
     size_t ip_payload_len = sizeof(struct icmphdr);
