@@ -1,7 +1,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-#include <netinet/udp.h>
+#include <netinet/ip_icmp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -17,17 +17,6 @@ int main(int argc, char **argv) {
   }
 
   char *addr_str = argv[1];
-  char *port_str = strchr(addr_str, ':');
-  int filter_port = -1;
-  if (port_str != NULL) {
-    filter_port = atoi(port_str + 1);
-    if (filter_port < 0 || filter_port > UINT16_MAX) {
-      fprintf(stderr, "Invalid port number: %d\n", filter_port);
-      return EXIT_FAILURE;
-    }
-    *port_str = '\0';
-  }
-
   struct sockaddr_in saddr_bind = {
       .sin_family = AF_INET,
       .sin_port = 0,
@@ -37,7 +26,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+  int socket_fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
   if (socket_fd < 0) {
     perror(NULL);
     return EXIT_FAILURE;
@@ -48,7 +37,7 @@ int main(int argc, char **argv) {
   }
 
   for (;;) {
-    char raw_payload[sizeof(struct iphdr) + sizeof(struct udphdr) + 50] = {0};
+    char raw_payload[sizeof(struct iphdr) + sizeof(struct icmphdr) + 50] = {0};
     if (recvfrom(socket_fd, raw_payload, sizeof(raw_payload) - 1, 0, NULL,
                  NULL) < 0) {
       perror(NULL);
@@ -64,13 +53,9 @@ int main(int argc, char **argv) {
       continue;
     }
     char *ip_payload = raw_payload + sizeof(struct iphdr);
-    struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-    if (filter_port >= 0 && ntohs(udp_hdr_p->uh_dport) != filter_port) {
-      continue;
-    }
-    char *udp_payload = ip_payload + sizeof(struct udphdr);
-    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
-           addr, ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
-           udp_payload);
+    struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+    printf("Received IP: %s, Type: %hhu, Code: %hhu, ID: %hu, Seq: %hu\n", addr,
+           icmp_hdr_p->type, icmp_hdr_p->code, icmp_hdr_p->un.echo.id,
+           icmp_hdr_p->un.echo.sequence);
   }
 }
