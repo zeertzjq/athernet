@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     char *ip_payload = raw_payload + sizeof(struct iphdr);
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     printf("Received IP: %s, Type: %hhu, Code: %hhu, ID: %hu, Seq: %hu\n", addr,
-           icmp_hdr_p->type, icmp_hdr_p->code, icmp_hdr_p->un.echo.id,
-           icmp_hdr_p->un.echo.sequence);
+           icmp_hdr_p->type, icmp_hdr_p->code, ntohs(icmp_hdr_p->un.echo.id),
+           ntohs(icmp_hdr_p->un.echo.sequence));
   }
 }
