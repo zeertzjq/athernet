@@ -43,12 +43,12 @@ enum {
   FRAME_ACK = 1,
 };
 
-static int transmit_seq = 0;
+static int send_seq = 0;
 static char send_raw[PHY_PAYLOAD_MAX / 8];
-static bool transmit_bits[PHY_PAYLOAD_MAX];
-static size_t transmit_bits_len = 0;
+static bool send_bits[PHY_PAYLOAD_MAX];
+static size_t send_bits_len = 0;
 static uint16_t ack_header_want = 0;
-static int64_t time_transmit_start[10];
+static int64_t time_ping[10];
 static int64_t time_ack_timeout = 0;
 
 static struct in_addr addr_host;
@@ -58,7 +58,7 @@ static int recv_fd = -1;
 static int udp_fd = -1;
 static int icmp_fd = -1;
 
-static void transmit_prepare(void) {
+static void send_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
   size_t raw_len = 0;
 
@@ -77,10 +77,13 @@ static void transmit_prepare(void) {
     raw_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    if (transmit_seq == 10) {
+    if (send_seq == 10) {
       return;
     }
-    icmp_hdr_p->un.echo.sequence = htons(transmit_seq);
+    if (send_seq > 0 && time_ns() - time_ping[send_seq] < 1000000000) {
+      return;
+    }
+    icmp_hdr_p->un.echo.sequence = htons(send_seq);
     icmp_hdr_p->checksum = 0;
     icmp_hdr_p->checksum = inet_checksum((uint16_t *)icmp_hdr_p, 4);
     raw_len = (ip_payload - send_raw) + sizeof(struct icmphdr);
@@ -107,20 +110,20 @@ static void transmit_prepare(void) {
   }
 
   const uint16_t data_header =
-      MAC_HEADER(mac_other, mac_self, FRAME_DATA, transmit_seq);
-  decompose_u16(data_header, transmit_bits);
+      MAC_HEADER(mac_other, mac_self, FRAME_DATA, send_seq);
+  decompose_u16(data_header, send_bits);
   for (size_t i = 0; i < raw_len; i++) {
-    decompose_u8(send_raw[i], transmit_bits + MAC_HEADER_LEN + i * 8);
+    decompose_u8(send_raw[i], send_bits + MAC_HEADER_LEN + i * 8);
   }
-  transmit_bits_len = MAC_HEADER_LEN + raw_len * 8;
-  ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, transmit_seq);
+  send_bits_len = MAC_HEADER_LEN + raw_len * 8;
+  ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, send_seq);
 }
 
-static void mac_transmit_retry(void) {
+static void mac_send_retry(void) {
   if (node_type == NODE_ICMP) {
-    time_transmit_start[transmit_seq] = time_ns();
+    time_ping[send_seq] = time_ns();
   }
-  phy_transmit_frame(transmit_bits, transmit_bits_len);
+  phy_transmit_frame(send_bits, send_bits_len);
   time_ack_timeout = time_ns() + 100000000;
 }
 
@@ -156,7 +159,11 @@ static void handle_recv(const bool *const bits, const size_t len) {
            udp_payload);
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    // TODO
+    if (icmp_hdr_p->type == ICMP_ECHOREPLY) {
+      uint16_t seq = icmp_hdr_p->un.echo.sequence;
+      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms\n", addr, seq,
+             (time_ns() - time_ping[seq]) / 1e6);
+    }
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
       return;
@@ -186,8 +193,8 @@ static void handle_recv(const bool *const bits, const size_t len) {
 }
 
 int main(int argc, char **argv) {
-  bool transmit = false;
-  bool receive = false;
+  bool send = false;
+  bool recv = false;
 
   if (argc <= 1) {
     fprintf(stderr, "Missing argument\n");
@@ -195,17 +202,17 @@ int main(int argc, char **argv) {
   }
 
   if (strcmp(argv[1], "send") == 0) {
-    transmit = true;
+    send = true;
   } else if (strcmp(argv[1], "recv") == 0) {
-    receive = true;
+    recv = true;
   } else if (strcmp(argv[1], "ping") == 0) {
     node_type = NODE_ICMP;
-    transmit = true;
-    receive = true;
+    send = true;
+    recv = true;
   } else if (strcmp(argv[1], "nat") == 0) {
     node_type = NODE_NAT;
-    transmit = true;
-    receive = true;
+    send = true;
+    recv = true;
     mac_self = 2;
     mac_other = 1;
     send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
@@ -248,7 +255,7 @@ int main(int argc, char **argv) {
 
   int arg_idx = 2;
 
-  if (transmit && node_type != NODE_NAT) {
+  if (send && node_type != NODE_NAT) {
     if (argc <= 2) {
       fprintf(stderr, "Missing argument\n");
       return EXIT_FAILURE;
@@ -315,22 +322,22 @@ int main(int argc, char **argv) {
   }
 
   phy_init();
-  pthread_t receive_thread;
-  pthread_create(&receive_thread, NULL, phy_receive_loop, NULL);
+  pthread_t recv_thread;
+  pthread_create(&recv_thread, NULL, phy_receive_loop, NULL);
   playback_start();
 
-  const uint16_t receive_ack_header =
+  const uint16_t recv_ack_header =
       MAC_HEADER(mac_self, mac_other, FRAME_ACK, 0);
-  const uint16_t receive_data_header =
+  const uint16_t recv_data_header =
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
-  while (transmit || receive) {
-    if (transmit && ack_header_want == 0) {
-      transmit_prepare();
+  while (send || recv) {
+    if (send && ack_header_want == 0) {
+      send_prepare();
       if (ack_header_want != 0) {
-        mac_transmit_retry();
+        mac_send_retry();
       } else if (node_type != NODE_NAT) {
-        transmit = false;
+        send = false;
       }
     }
 
@@ -339,29 +346,29 @@ int main(int argc, char **argv) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
       const uint16_t header = compose_u16(bits);
-      if (receive && (header & 0xFFF0) == receive_data_header) {
+      if (recv && (header & 0xFFF0) == recv_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
-        static int receive_seq = 0;
-        if (seq == receive_seq) {
+        static int recv_seq = 0;
+        if (seq == recv_seq) {
           handle_recv(bits + MAC_HEADER_LEN, len);
-          receive_seq = (receive_seq + 1) & 0xF;
+          recv_seq = (recv_seq + 1) & 0xF;
         }
       } else if (ack_header_want != 0 && header == ack_header_want) {
-        transmit_seq = (transmit_seq + 1) & 0xF;
+        send_seq = (send_seq + 1) & 0xF;
         ack_header_want = 0;
       }
       continue;
     }
 
     if (ack_header_want != 0 && time_ns() > time_ack_timeout) {
-      mac_transmit_retry();
+      mac_send_retry();
     }
   }
 
   phy_receive_stopped = 1;
   playback_stop();
-  pthread_join(receive_thread, NULL);
+  pthread_join(recv_thread, NULL);
 
   return EXIT_SUCCESS;
 }
