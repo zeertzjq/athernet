@@ -216,7 +216,11 @@ int main(int argc, char **argv) {
         .sin_port = htons(22222),
         .sin_addr = INADDR_ANY,
     };
-    if (bind(recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
+    if (bind(udp_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    if (bind(icmp_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
