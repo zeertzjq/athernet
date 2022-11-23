@@ -92,7 +92,9 @@ static void send_prepare(void) {
     if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
       return;
     }
-    size_t ip_payload_len = sizeof(struct icmphdr);
+    char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+    ((uint16_t *)icmp_payload)[0] = htons(11111);
+    size_t ip_payload_len = sizeof(struct icmphdr) + 2;
     icmp_hdr_p->un.echo.sequence = htons(send_seq);
     icmp_hdr_p->checksum = 0;
     icmp_hdr_p->checksum =
@@ -117,10 +119,11 @@ static void send_prepare(void) {
       udp_hdr_p->uh_dport = htons(11111);
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      if (icmp_hdr_p->un.echo.id != htons(22222)) {
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      if (((uint16_t *)icmp_payload)[0] != htons(22222)) {
         return;
       }
-      icmp_hdr_p->un.echo.id = htons(11111);
+      ((uint16_t *)icmp_payload)[0] = htons(11111);
       icmp_hdr_p->checksum = 0;
       icmp_hdr_p->checksum =
           inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
@@ -182,8 +185,9 @@ static void handle_recv(const bool *const bits, const size_t len) {
     char *icmp_payload = ip_payload + sizeof(struct icmphdr);
     if (icmp_hdr_p->type == ICMP_ECHOREPLY) {
       uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
-      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %s\n",
-             addr, seq, (time_ns() - time_ping[seq]) / 2e6, icmp_payload);
+      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %hu\n",
+             addr, seq, (time_ns() - time_ping[seq]) / 2e6,
+             ntohs(((uint16_t *)icmp_payload)[0]));
       if (++ping_done == ping_count) {
         mac_recv = false;
       }
@@ -202,10 +206,11 @@ static void handle_recv(const bool *const bits, const size_t len) {
       recv_fd = udp_fd;
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      if (icmp_hdr_p->un.echo.id != htons(11111)) {
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      if (((uint16_t *)icmp_payload)[0] != htons(11111)) {
         return;
       }
-      icmp_hdr_p->un.echo.id = htons(22222);
+      ((uint16_t *)icmp_payload)[0] = htons(22222);
       icmp_hdr_p->checksum = 0;
       icmp_hdr_p->checksum =
           inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
@@ -315,7 +320,6 @@ int main(int argc, char **argv) {
       *icmp_hdr_p = (struct icmphdr){
           .type = ICMP_ECHO,
           .code = 0,
-          .un.echo.id = htons(11111),
       };
     }
 
