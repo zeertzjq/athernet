@@ -1,7 +1,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-#include <netinet/udp.h>
+#include <netinet/ip_icmp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,6 +11,15 @@
 #include <sys/socket.h>
 #include <time.h>
 
+static uint16_t inet_checksum(const uint16_t *words, int count) {
+  uint16_t res = 0;
+  while (--count >= 0) {
+    uint32_t tmp = res + *words++;
+    res = (tmp >> 16) + (tmp & 0xFFFF);
+  }
+  return ~res;
+}
+
 int main(int argc, char **argv) {
   if (argc <= 1) {
     fprintf(stderr, "Missing argument\n");
@@ -18,18 +27,6 @@ int main(int argc, char **argv) {
   }
 
   char *addr_str = argv[1];
-  char *port_str = strchr(addr_str, ':');
-  if (port_str == NULL) {
-    fprintf(stderr, "Missing port number\n");
-    return EXIT_FAILURE;
-  }
-  int dest_port = atoi(port_str + 1);
-  if (dest_port < 0 || dest_port > UINT16_MAX) {
-    fprintf(stderr, "Invalid port number: %d\n", dest_port);
-    return EXIT_FAILURE;
-  }
-  *port_str = '\0';
-
   struct sockaddr_in saddr_dest = {
       .sin_family = AF_INET,
       .sin_port = 0,
@@ -45,39 +42,34 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  char send_raw[sizeof(struct iphdr) + sizeof(struct udphdr) + 50];
+  char send_raw[sizeof(struct iphdr) + sizeof(struct icmphdr)];
   struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
   *ip_hdr_p = (struct iphdr){
       .ihl = 5,
       .version = 4,
       .ttl = 255,
-      .protocol = IPPROTO_UDP,
+      .protocol = IPPROTO_ICMP,
       .saddr = 0,
       .daddr = saddr_dest.sin_addr.s_addr,
   };
   char *ip_payload = send_raw + sizeof(struct iphdr);
-  struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-  *udp_hdr_p = (struct udphdr){
-      .uh_sport = htons(33333),
-      .uh_dport = htons(dest_port),
+  struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+  *icmp_hdr_p = (struct icmphdr){
+      .type = ICMP_ECHO,
+      .code = 0,
+      .un.echo.id = htons(11111),
   };
-  char *udp_payload = ip_payload + sizeof(struct udphdr);
-  while (fgets(udp_payload, 50, stdin) != NULL) {
-    size_t udp_payload_len = strlen(udp_payload);
-    if (udp_payload[udp_payload_len - 1] == '\n') {
-      udp_payload[--udp_payload_len] = '\0';
-    }
-    size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
-    udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    size_t raw_payload_len = (udp_payload - send_raw) + udp_payload_len;
-    if (sendto(socket_fd, send_raw, raw_payload_len, 0,
+  for (int i = 0; i < 10; i++) {
+    icmp_hdr_p->un.echo.sequence = htons(i);
+    icmp_hdr_p->checksum = 0;
+    icmp_hdr_p->checksum = inet_checksum((uint16_t *)icmp_hdr_p, 4);
+    if (sendto(socket_fd, send_raw, sizeof(send_raw), 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
       continue;
     }
-    printf("Sent Payload: %s\n", udp_payload);
     struct timespec ts = {
-        .tv_nsec = 500000000,
+        .tv_sec = 1,
     };
     nanosleep(&ts, NULL);
   }

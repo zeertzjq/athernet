@@ -37,13 +37,12 @@ int main(int argc, char **argv) {
   }
 
   for (;;) {
-    char raw_payload[sizeof(struct iphdr) + sizeof(struct icmphdr) + 50] = {0};
-    if (recvfrom(socket_fd, raw_payload, sizeof(raw_payload) - 1, 0, NULL,
-                 NULL) < 0) {
+    char recv_raw[sizeof(struct iphdr) + sizeof(struct icmphdr)] = {0};
+    if (recvfrom(socket_fd, recv_raw, sizeof(recv_raw), 0, NULL, NULL) < 0) {
       perror(NULL);
       continue;
     }
-    struct iphdr *ip_hdr_p = (struct iphdr *)raw_payload;
+    struct iphdr *ip_hdr_p = (struct iphdr *)recv_raw;
     struct in_addr addr_src = {
         .s_addr = ip_hdr_p->saddr,
     };
@@ -52,7 +51,7 @@ int main(int argc, char **argv) {
       perror(NULL);
       continue;
     }
-    char *ip_payload = raw_payload + sizeof(struct iphdr);
+    char *ip_payload = recv_raw + sizeof(struct iphdr);
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     printf("Received IP: %s, Type: %hhu, Code: %hhu, ID: %hu, Seq: %hu\n", addr,
            icmp_hdr_p->type, icmp_hdr_p->code, ntohs(icmp_hdr_p->un.echo.id),
