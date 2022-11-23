@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
   *udp_hdr_p = (struct udphdr){
       .uh_sport = htons(33333),
       .uh_dport = htons(dest_port),
+      .uh_sum = 0,
   };
   char *udp_payload = ip_payload + sizeof(struct udphdr);
   while (fgets(udp_payload, 50, stdin) != NULL) {
