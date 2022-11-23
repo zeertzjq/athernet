@@ -170,10 +170,11 @@ static void handle_recv(const bool *const bits, const size_t len) {
            udp_payload);
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+    char *icmp_payload = ip_payload + sizeof(struct icmphdr);
     if (icmp_hdr_p->type == ICMP_ECHOREPLY) {
       uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
-      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms\n", addr, seq,
-             (time_ns() - time_ping[seq]) / 2e6);
+      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %s\n",
+             addr, seq, (time_ns() - time_ping[seq]) / 2e6, icmp_payload);
     }
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
