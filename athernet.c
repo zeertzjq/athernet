@@ -359,7 +359,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    int64_t poll_timeout = 10000000;
+    int64_t poll_timeout = 1000000;
     if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
