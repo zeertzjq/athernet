@@ -43,13 +43,19 @@ enum {
   FRAME_ACK = 1,
 };
 
+static bool mac_send = false;
+static bool mac_recv = false;
+
 static int send_seq = 0;
 static char send_raw[PHY_PAYLOAD_MAX / 8];
 static bool send_bits[PHY_PAYLOAD_MAX];
 static size_t send_bits_len = 0;
 static uint16_t ack_header_want = 0;
 static int64_t time_ack_timeout = 0;
+
 static int64_t time_ping[10];
+static int ping_count = 10;
+static int ping_done = 0;
 
 static struct in_addr addr_host;
 
@@ -67,6 +73,7 @@ static void send_prepare(void) {
     char *udp_payload = ip_payload + sizeof(struct udphdr);
     if (fgets(udp_payload, sizeof(send_raw) - (udp_payload - send_raw),
               stdin) == NULL) {
+      mac_send = false;
       return;
     }
     size_t udp_payload_len = strlen(udp_payload);
@@ -78,7 +85,8 @@ static void send_prepare(void) {
     raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    if (send_seq == 10) {
+    if (send_seq == ping_count) {
+      mac_send = false;
       return;
     }
     if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
@@ -176,6 +184,9 @@ static void handle_recv(const bool *const bits, const size_t len) {
       uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
       printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %s\n",
              addr, seq, (time_ns() - time_ping[seq]) / 2e6, icmp_payload);
+      if (++ping_done == ping_count) {
+        mac_recv = false;
+      }
     }
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
@@ -213,26 +224,23 @@ static void handle_recv(const bool *const bits, const size_t len) {
 }
 
 int main(int argc, char **argv) {
-  bool send = false;
-  bool recv = false;
-
   if (argc <= 1) {
     fprintf(stderr, "Missing argument\n");
     return EXIT_FAILURE;
   }
 
   if (strcmp(argv[1], "send") == 0) {
-    send = true;
+    mac_send = true;
   } else if (strcmp(argv[1], "recv") == 0) {
-    recv = true;
+    mac_recv = true;
   } else if (strcmp(argv[1], "ping") == 0) {
     node_type = NODE_ICMP;
-    send = true;
-    recv = true;
+    mac_send = true;
+    mac_recv = true;
   } else if (strcmp(argv[1], "nat") == 0) {
     node_type = NODE_NAT;
-    send = true;
-    recv = true;
+    mac_send = true;
+    mac_recv = true;
     mac_self = 2;
     mac_other = 1;
     send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
@@ -275,7 +283,7 @@ int main(int argc, char **argv) {
 
   int arg_idx = 2;
 
-  if (send && node_type != NODE_NAT) {
+  if (mac_send && node_type != NODE_NAT) {
     if (argc <= 2) {
       fprintf(stderr, "Missing argument\n");
       return EXIT_FAILURE;
@@ -351,13 +359,11 @@ int main(int argc, char **argv) {
   const uint16_t recv_data_header =
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
-  while (send || recv) {
-    if (send && ack_header_want == 0) {
+  while (mac_send || mac_recv) {
+    if (mac_send && ack_header_want == 0) {
       send_prepare();
       if (ack_header_want != 0) {
         mac_send_retry();
-      } else if (node_type != NODE_NAT) {
-        send = false;
       }
     }
 
@@ -366,7 +372,7 @@ int main(int argc, char **argv) {
       bool bits[PHY_PAYLOAD_MAX];
       const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
       const uint16_t header = compose_u16(bits);
-      if (recv && (header & 0xFFF0) == recv_data_header) {
+      if (mac_recv && (header & 0xFFF0) == recv_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
         static int recv_seq = 0;
