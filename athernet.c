@@ -176,7 +176,7 @@ static void send_prepare(void) {
 }
 
 static void mac_send_retry(void) {
-  if (node_type == NODE_ICMP) {
+  if (node_type == NODE_ICMP && ping_count >= 0) {
     time_ping[send_seq] = time_ns();
   }
   phy_transmit_frame(send_bits, send_bits_len);
