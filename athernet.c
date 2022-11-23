@@ -56,6 +56,7 @@ static int64_t time_ack_timeout = 0;
 static int64_t time_ping[10];
 static int ping_count = 10;
 static int ping_done = 0;
+static size_t reply_ip_payload_len = 0;
 
 static struct in_addr addr_host;
 static struct in_addr addr_dest;
@@ -101,22 +102,33 @@ static void send_prepare(void) {
     raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    if (send_seq == ping_count) {
-      mac_send = false;
-      return;
+    size_t ip_payload_len = sizeof(struct icmphdr) + sizeof(struct timeval) + 2;
+    if (ping_count >= 0) {
+      if (send_seq == ping_count) {
+        mac_send = false;
+        return;
+      }
+      if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
+        return;
+      }
+      char *icmp_pad =
+          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      ((uint16_t *)icmp_pad)[0] = htons(11111);
+      *icmp_hdr_p = (struct icmphdr){
+          .type = ICMP_ECHO,
+          .code = 0,
+          .checksum = 0,
+          .un.echo.sequence = htons(send_seq),
+      };
+    } else {
+      if (reply_ip_payload_len == 0) {
+        return;
+      }
+      ip_payload_len = reply_ip_payload_len;
+      reply_ip_payload_len = 0;
+      icmp_hdr_p->type = ICMP_ECHOREPLY;
+      icmp_hdr_p->checksum = 0;
     }
-    if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
-      return;
-    }
-    char *icmp_payload = ip_payload + sizeof(struct icmphdr);
-    ((uint16_t *)icmp_payload)[0] = htons(11111);
-    *icmp_hdr_p = (struct icmphdr){
-        .type = ICMP_ECHO,
-        .code = 0,
-        .checksum = 0,
-        .un.echo.sequence = htons(send_seq),
-    };
-    size_t ip_payload_len = sizeof(struct icmphdr) + 2;
     icmp_hdr_p->checksum =
         inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
     raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
@@ -139,17 +151,19 @@ static void send_prepare(void) {
       udp_hdr_p->uh_dport = htons(11111);
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
-      if (((uint16_t *)icmp_payload)[0] != htons(22222)) {
+      char *icmp_pad =
+          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      if (((uint16_t *)icmp_pad)[0] != htons(22222)) {
         return;
       }
-      ((uint16_t *)icmp_payload)[0] = htons(11111);
+      ((uint16_t *)icmp_pad)[0] = htons(11111);
       icmp_hdr_p->checksum = 0;
       icmp_hdr_p->checksum =
           inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
     }
     raw_payload_len = len;
   }
+  ip_hdr_p->tot_len = raw_payload_len;
 
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, send_seq);
@@ -202,15 +216,18 @@ static void handle_recv(const bool *const bits, const size_t len) {
            udp_payload);
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    char *icmp_payload = ip_payload + sizeof(struct icmphdr);
-    if (icmp_hdr_p->type == ICMP_ECHOREPLY) {
+    if (icmp_hdr_p->type == ICMP_ECHOREPLY && ping_count >= 0) {
       uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
-      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %hu\n",
-             addr, seq, (time_ns() - time_ping[seq]) / 2e6,
-             ntohs(((uint16_t *)icmp_payload)[0]));
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %s\n",
+             addr, seq, (time_ns() - time_ping[seq]) / 2e6, icmp_payload);
       if (++ping_done == ping_count) {
         mac_recv = false;
       }
+    } else if (icmp_hdr_p->type == ICMP_ECHO && ping_count < 0) {
+      addr_dest.s_addr = ip_hdr_p->saddr;
+      memcpy(send_raw, recv_raw, ip_hdr_p->tot_len);
+      reply_ip_payload_len = ip_hdr_p->tot_len - sizeof(struct iphdr);
     }
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
@@ -223,18 +240,17 @@ static void handle_recv(const bool *const bits, const size_t len) {
         return;
       }
       udp_hdr_p->uh_sport = htons(22222);
-      recv_fd = udp_fd;
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
-      if (((uint16_t *)icmp_payload)[0] != htons(11111)) {
+      char *icmp_pad =
+          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      if (((uint16_t *)icmp_pad)[0] != htons(11111)) {
         return;
       }
-      ((uint16_t *)icmp_payload)[0] = htons(22222);
+      ((uint16_t *)icmp_pad)[0] = htons(22222);
       icmp_hdr_p->checksum = 0;
       icmp_hdr_p->checksum =
           inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
-      recv_fd = icmp_fd;
     }
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
@@ -262,6 +278,11 @@ int main(int argc, char **argv) {
     node_type = NODE_ICMP;
     mac_send = true;
     mac_recv = true;
+  } else if (strcmp(argv[1], "reply") == 0) {
+    node_type = NODE_ICMP;
+    mac_send = true;
+    mac_recv = true;
+    ping_count = -1;
   } else if (strcmp(argv[1], "nat") == 0) {
     node_type = NODE_NAT;
     mac_send = true;
@@ -308,7 +329,7 @@ int main(int argc, char **argv) {
 
   int arg_idx = 2;
 
-  if (mac_send && node_type != NODE_NAT) {
+  if (mac_send && node_type != NODE_NAT && ping_count >= 0) {
     if (argc <= 2) {
       fprintf(stderr, "Missing argument\n");
       return EXIT_FAILURE;
@@ -339,7 +360,9 @@ int main(int argc, char **argv) {
   }
 
   for (int i = arg_idx; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
+    if (node_type == NODE_NAT && strcmp(argv[i], "--icmp") == 0) {
+      recv_fd = icmp_fd;
+    } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
       mac_self = atoi(argv[i] + LEN("--self=")) & 0xF;
