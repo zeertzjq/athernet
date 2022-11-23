@@ -48,8 +48,8 @@ static char send_raw[PHY_PAYLOAD_MAX / 8];
 static bool send_bits[PHY_PAYLOAD_MAX];
 static size_t send_bits_len = 0;
 static uint16_t ack_header_want = 0;
-static int64_t time_ping[10];
 static int64_t time_ack_timeout = 0;
+static int64_t time_ping[10];
 
 static struct in_addr addr_host;
 
@@ -60,7 +60,7 @@ static int icmp_fd = -1;
 
 static void send_prepare(void) {
   char *ip_payload = send_raw + sizeof(struct iphdr);
-  size_t raw_len = 0;
+  size_t raw_payload_len = 0;
 
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
@@ -74,7 +74,7 @@ static void send_prepare(void) {
     }
     size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    raw_len = (ip_payload - send_raw) + ip_payload_len;
+    raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     if (send_seq == 10) {
@@ -83,10 +83,12 @@ static void send_prepare(void) {
     if (send_seq > 0 && time_ns() - time_ping[send_seq] < 1000000000) {
       return;
     }
+    size_t ip_payload_len = sizeof(struct icmphdr);
     icmp_hdr_p->un.echo.sequence = htons(send_seq);
     icmp_hdr_p->checksum = 0;
-    icmp_hdr_p->checksum = inet_checksum((uint16_t *)icmp_hdr_p, 4);
-    raw_len = (ip_payload - send_raw) + sizeof(struct icmphdr);
+    icmp_hdr_p->checksum =
+        inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
+    raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_NAT) {
     ssize_t len = recvfrom(recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
     if (len < 0) {
@@ -96,6 +98,7 @@ static void send_prepare(void) {
       return;
     }
     struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
+    size_t ip_payload_len = len - sizeof(struct iphdr);
     ip_hdr_p->daddr = addr_host.s_addr;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
       struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
@@ -104,18 +107,25 @@ static void send_prepare(void) {
       }
       udp_hdr_p->uh_dport = htons(11111);
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
-      // TODO
+      struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+      if (icmp_hdr_p->un.echo.id != htons(22222)) {
+        return;
+      }
+      icmp_hdr_p->un.echo.id = htons(11111);
+      icmp_hdr_p->checksum = 0;
+      icmp_hdr_p->checksum =
+          inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
     }
-    raw_len = len;
+    raw_payload_len = len;
   }
 
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, send_seq);
   decompose_u16(data_header, send_bits);
-  for (size_t i = 0; i < raw_len; i++) {
+  for (size_t i = 0; i < raw_payload_len; i++) {
     decompose_u8(send_raw[i], send_bits + MAC_HEADER_LEN + i * 8);
   }
-  send_bits_len = MAC_HEADER_LEN + raw_len * 8;
+  send_bits_len = MAC_HEADER_LEN + raw_payload_len * 8;
   ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, send_seq);
 }
 
@@ -150,6 +160,7 @@ static void handle_recv(const bool *const bits, const size_t len) {
     perror(NULL);
   }
   char *ip_payload = recv_raw + sizeof(struct iphdr);
+  size_t ip_payload_len = raw_payload_len - sizeof(struct iphdr);
 
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
@@ -160,9 +171,9 @@ static void handle_recv(const bool *const bits, const size_t len) {
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     if (icmp_hdr_p->type == ICMP_ECHOREPLY) {
-      uint16_t seq = icmp_hdr_p->un.echo.sequence;
+      uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
       printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms\n", addr, seq,
-             (time_ns() - time_ping[seq]) / 1e6);
+             (time_ns() - time_ping[seq]) / 2e6);
     }
   } else if (node_type == NODE_NAT) {
     if (ip_hdr_p->saddr != addr_host.s_addr) {
@@ -177,7 +188,14 @@ static void handle_recv(const bool *const bits, const size_t len) {
       udp_hdr_p->uh_sport = htons(22222);
       recv_fd = udp_fd;
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
-      // TODO
+      struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+      if (icmp_hdr_p->un.echo.id != htons(11111)) {
+        return;
+      }
+      icmp_hdr_p->un.echo.id = htons(22222);
+      icmp_hdr_p->checksum = 0;
+      icmp_hdr_p->checksum =
+          inet_checksum((uint16_t *)icmp_hdr_p, ip_payload_len / 2);
       recv_fd = icmp_fd;
     }
     struct sockaddr_in saddr_dest = {
@@ -261,23 +279,9 @@ int main(int argc, char **argv) {
       return EXIT_FAILURE;
     }
 
-    char *addr_str = argv[2];
-    struct in_addr addr_dest;
-    if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
-      fprintf(stderr, "Invalid IP address: %s\n", addr_str);
-      return EXIT_FAILURE;
-    }
-
     struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
-    *ip_hdr_p = (struct iphdr){
-        .ihl = 5,
-        .version = 4,
-        .ttl = 255,
-        .protocol = node_type == NODE_UDP ? IPPROTO_UDP : IPPROTO_ICMP,
-        .saddr = addr_host.s_addr,
-        .daddr = addr_dest.s_addr,
-    };
     char *ip_payload = send_raw + sizeof(struct iphdr);
+    char *addr_str = argv[2];
 
     if (node_type == NODE_UDP) {
       char *port_str = strchr(addr_str, ':');
@@ -304,6 +308,20 @@ int main(int argc, char **argv) {
           .un.echo.id = htons(11111),
       };
     }
+
+    struct in_addr addr_dest;
+    if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
+      fprintf(stderr, "Invalid IP address: %s\n", addr_str);
+      return EXIT_FAILURE;
+    }
+    *ip_hdr_p = (struct iphdr){
+        .ihl = 5,
+        .version = 4,
+        .ttl = 255,
+        .protocol = node_type == NODE_UDP ? IPPROTO_UDP : IPPROTO_ICMP,
+        .saddr = addr_host.s_addr,
+        .daddr = addr_dest.s_addr,
+    };
 
     arg_idx = 3;
   }
