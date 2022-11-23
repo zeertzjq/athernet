@@ -16,6 +16,15 @@
 #include "common.h"
 #include "physical.h"
 
+static uint16_t inet_checksum(const uint16_t *words, int count) {
+  uint16_t res = 0;
+  while (--count >= 0) {
+    uint32_t tmp = res + *words++;
+    res = (tmp >> 16) + (tmp & 0xFFFF);
+  }
+  return ~res;
+}
+
 static enum {
   NODE_UDP,
   NODE_ICMP,
@@ -39,7 +48,7 @@ static char send_raw[PHY_PAYLOAD_MAX / 8];
 static bool transmit_bits[PHY_PAYLOAD_MAX];
 static size_t transmit_bits_len = 0;
 static uint16_t ack_header_want = 0;
-static int64_t time_transmit_start = 0;
+static int64_t time_transmit_start[10];
 static int64_t time_ack_timeout = 0;
 
 static struct in_addr addr_host;
@@ -65,13 +74,16 @@ static void transmit_prepare(void) {
     }
     size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    raw_len = (udp_payload - send_raw) + udp_payload_len;
+    raw_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-    *icmp_hdr_p = (struct icmphdr){
-        .type = ICMP_ECHO,
-    };
-    // TODO
+    if (transmit_seq == 10) {
+      return;
+    }
+    icmp_hdr_p->un.echo.sequence = htons(transmit_seq);
+    icmp_hdr_p->checksum = 0;
+    icmp_hdr_p->checksum = inet_checksum((uint16_t *)icmp_hdr_p, 4);
+    raw_len = (ip_payload - send_raw) + sizeof(struct icmphdr);
   } else if (node_type == NODE_NAT) {
     ssize_t len = recvfrom(recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
     if (len < 0) {
@@ -106,7 +118,7 @@ static void transmit_prepare(void) {
 
 static void mac_transmit_retry(void) {
   if (node_type == NODE_ICMP) {
-    time_transmit_start = time_ns();
+    time_transmit_start[transmit_seq] = time_ns();
   }
   phy_transmit_frame(transmit_bits, transmit_bits_len);
   time_ack_timeout = time_ns() + 100000000;
@@ -243,28 +255,6 @@ int main(int argc, char **argv) {
     }
 
     char *addr_str = argv[2];
-
-    if (node_type == NODE_UDP) {
-      char *port_str = strchr(addr_str, ':');
-      if (port_str == NULL) {
-        fprintf(stderr, "Missing port number\n");
-        return EXIT_FAILURE;
-      }
-      int dest_port = atoi(port_str + 1);
-      if (dest_port < 0 || dest_port > UINT16_MAX) {
-        fprintf(stderr, "Invalid port number: %d\n", dest_port);
-        return EXIT_FAILURE;
-      }
-      *port_str = '\0';
-
-      char *ip_payload = send_raw + sizeof(struct iphdr);
-      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      *udp_hdr_p = (struct udphdr){
-          .uh_sport = htons(11111),
-          .uh_dport = htons(dest_port),
-      };
-    }
-
     struct in_addr addr_dest;
     if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
       fprintf(stderr, "Invalid IP address: %s\n", addr_str);
@@ -280,6 +270,33 @@ int main(int argc, char **argv) {
         .saddr = addr_host.s_addr,
         .daddr = addr_dest.s_addr,
     };
+    char *ip_payload = send_raw + sizeof(struct iphdr);
+
+    if (node_type == NODE_UDP) {
+      char *port_str = strchr(addr_str, ':');
+      if (port_str == NULL) {
+        fprintf(stderr, "Missing port number\n");
+        return EXIT_FAILURE;
+      }
+      int dest_port = atoi(port_str + 1);
+      if (dest_port < 0 || dest_port > UINT16_MAX) {
+        fprintf(stderr, "Invalid port number: %d\n", dest_port);
+        return EXIT_FAILURE;
+      }
+      *port_str = '\0';
+      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
+      *udp_hdr_p = (struct udphdr){
+          .uh_sport = htons(11111),
+          .uh_dport = htons(dest_port),
+      };
+    } else if (node_type == NODE_ICMP) {
+      struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
+      *icmp_hdr_p = (struct icmphdr){
+          .type = ICMP_ECHO,
+          .code = 0,
+          .un.echo.id = htons(11111),
+      };
+    }
 
     arg_idx = 3;
   }

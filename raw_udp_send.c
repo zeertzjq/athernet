@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     }
     size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
     udp_hdr_p->uh_ulen = htons(ip_payload_len);
-    size_t raw_payload_len = (udp_payload - send_raw) + udp_payload_len;
+    size_t raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
     if (sendto(socket_fd, send_raw, raw_payload_len, 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
