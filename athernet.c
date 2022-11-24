@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 
 #include "backend.h"
 #include "common.h"
@@ -111,8 +112,9 @@ static void send_prepare(void) {
       if (send_seq > 0 && time_ns() - time_ping[send_seq - 1] < 1000000000) {
         return;
       }
-      char *icmp_pad =
-          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      gettimeofday((struct timeval *)icmp_payload, NULL);
+      char *icmp_pad = icmp_payload + sizeof(struct timeval);
       ((uint16_t *)icmp_pad)[0] = htons(11111);
       *icmp_hdr_p = (struct icmphdr){
           .type = ICMP_ECHO,
@@ -151,8 +153,8 @@ static void send_prepare(void) {
       udp_hdr_p->uh_dport = htons(11111);
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      char *icmp_pad =
-          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      char *icmp_pad = icmp_payload + sizeof(struct timeval);
       if (((uint16_t *)icmp_pad)[0] != htons(22222)) {
         return;
       }
@@ -217,16 +219,18 @@ static void handle_recv(const bool *const bits, const size_t len) {
   } else if (node_type == NODE_ICMP) {
     struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
     uint16_t seq = ntohs(icmp_hdr_p->un.echo.sequence);
+    char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+    struct timeval *tp = (struct timeval *)icmp_payload;
     if (icmp_hdr_p->type == ICMP_ECHOREPLY && ping_count >= 0) {
-      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
-      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %s\n",
-             addr, seq, (time_ns() - time_ping[seq]) / 2e6, icmp_payload);
+      int64_t rtt_ns = time_ns() - time_ping[seq];
+      printf("Reply from IP: %s, Seq: %hu, Latency: %lf ms, Payload: %ld %ld\n",
+             addr, seq, rtt_ns / 2e6, tp->tv_sec, tp->tv_usec);
       if (++ping_done == ping_count) {
         mac_recv = false;
       }
     } else if (icmp_hdr_p->type == ICMP_ECHO && ping_count < 0) {
-      printf("Ping from IP: %s, ID: %hu, Seq: %hu\n", addr,
-             ntohs(icmp_hdr_p->un.echo.id), seq);
+      printf("Ping from IP: %s, ID: %hu, Seq: %hu, Payload: %ld %ld\n", addr,
+             ntohs(icmp_hdr_p->un.echo.id), seq, tp->tv_sec, tp->tv_usec);
       addr_dest.s_addr = ip_hdr_p->saddr;
       memcpy(send_raw, recv_raw, ip_hdr_p->tot_len);
       reply_ip_payload_len = ip_hdr_p->tot_len - sizeof(struct iphdr);
@@ -244,8 +248,8 @@ static void handle_recv(const bool *const bits, const size_t len) {
       udp_hdr_p->uh_sport = htons(22222);
     } else if (ip_hdr_p->protocol == IPPROTO_ICMP) {
       struct icmphdr *icmp_hdr_p = (struct icmphdr *)ip_payload;
-      char *icmp_pad =
-          ip_payload + sizeof(struct icmphdr) + sizeof(struct timeval);
+      char *icmp_payload = ip_payload + sizeof(struct icmphdr);
+      char *icmp_pad = icmp_payload + sizeof(struct timeval);
       if (((uint16_t *)icmp_pad)[0] != htons(11111)) {
         return;
       }
