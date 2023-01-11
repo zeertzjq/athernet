@@ -84,6 +84,7 @@ static void tcp_syn_prepare(const bool d) {
       .th_win = htons(1),
   };
   tcp_fill_checksum(d);
+  raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
 }
 
 static void tcp_handle_recv(void) {
@@ -278,6 +279,7 @@ int main(int argc, char **argv) {
   while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
          !input_stopped) {
     if (!input_stopped && tcp_state[0] == TCP_CLOSE) {
+      tcp_syn_prepare(0);
     }
   }
 
