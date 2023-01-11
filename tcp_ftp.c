@@ -92,7 +92,7 @@ static void tcp_syn_prepare(const bool d) {
       .th_seq = htonl(rand()),
       .th_off = 5,
       .th_flags = TH_SYN,
-      .th_win = htons(1),
+      .th_win = htons(100),
   };
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
   tcp_fill_checksum(d);
