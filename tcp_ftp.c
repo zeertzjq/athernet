@@ -9,6 +9,7 @@
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
+static struct in_addr addr_host;
 static struct in_addr addr_dest;
 
 static int tcp_states[2] = {TCP_CLOSE, TCP_CLOSE};
@@ -118,13 +119,16 @@ static size_t ftp_next_cmd(char *const buf, const size_t buf_len) {
 }
 
 int main(int argc, char **argv) {
-  if (argc <= 1) {
-    fprintf(stderr, "Missing argument\n");
+  if (argc <= 2) {
+    fprintf(stderr, "Not enough arguments\n");
     return EXIT_FAILURE;
   }
-  const char *const addr_str = argv[1];
-  if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
-    fprintf(stderr, "Invalid IP address: %s\n", addr_str);
+  if (inet_pton(AF_INET, argv[1], &addr_host) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", argv[1]);
+    return EXIT_FAILURE;
+  }
+  if (inet_pton(AF_INET, argv[2], &addr_dest) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", argv[2]);
     return EXIT_FAILURE;
   }
 
