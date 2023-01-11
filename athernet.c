@@ -36,12 +36,12 @@ enum {
 static bool mac_send = false;
 static bool mac_recv = false;
 
-static int send_seq = 0;
-static char send_raw[PHY_PAYLOAD_MAX / 8];
-static bool send_bits[PHY_PAYLOAD_MAX];
-static size_t send_bits_len = 0;
-static uint16_t ack_header_want = 0;
-static int64_t time_ack_timeout = 0;
+static int mac_send_seq = 0;
+static char raw_send_payload[PHY_PAYLOAD_MAX / 8];
+static bool mac_send_bits[PHY_PAYLOAD_MAX];
+static size_t mac_send_bits_len = 0;
+static uint16_t mac_ack_want = 0;
+static int64_t mac_ack_timeout = 0;
 
 static struct in_addr addr_host;
 static struct in_addr addr_dest;
@@ -51,7 +51,7 @@ static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
 
 static void mac_send_prepare(void) {
-  struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
+  struct iphdr *ip_hdr_p = (struct iphdr *)raw_send_payload;
   *ip_hdr_p = (struct iphdr){
       .ihl = 5,
       .version = 4,
@@ -60,13 +60,14 @@ static void mac_send_prepare(void) {
       .saddr = addr_host.s_addr,
       .daddr = addr_dest.s_addr,
   };
-  char *ip_payload = send_raw + sizeof(struct iphdr);
+  char *ip_payload = raw_send_payload + sizeof(struct iphdr);
   size_t raw_payload_len = 0;
 
   if (node_type == NODE_UDP) {
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
-    if (fgets(udp_payload, sizeof(send_raw) - (udp_payload - send_raw),
+    if (fgets(udp_payload,
+              sizeof(raw_send_payload) - (udp_payload - raw_send_payload),
               stdin) == NULL) {
       mac_send = false;
       return;
@@ -82,17 +83,17 @@ static void mac_send_prepare(void) {
         .uh_ulen = htons(ip_payload_len),
         .uh_sum = 0,
     };
-    raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
+    raw_payload_len = (ip_payload - raw_send_payload) + ip_payload_len;
   } else if (node_type == NODE_NAT) {
     ssize_t len =
-        recvfrom(ip_recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
+        recvfrom(ip_recv_fd, S_LEN(raw_send_payload), MSG_DONTWAIT, NULL, NULL);
     if (len < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
         perror(NULL);
       }
       return;
     }
-    struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
+    struct iphdr *ip_hdr_p = (struct iphdr *)raw_send_payload;
     size_t ip_payload_len = len - sizeof(struct iphdr);
     ip_hdr_p->daddr = addr_host.s_addr;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
@@ -107,18 +108,18 @@ static void mac_send_prepare(void) {
   ip_hdr_p->tot_len = raw_payload_len;
 
   const uint16_t data_header =
-      MAC_HEADER(mac_other, mac_self, FRAME_DATA, send_seq);
-  decompose_u16(data_header, send_bits);
+      MAC_HEADER(mac_other, mac_self, FRAME_DATA, mac_send_seq);
+  decompose_u16(data_header, mac_send_bits);
   for (size_t i = 0; i < raw_payload_len; i++) {
-    decompose_u8(send_raw[i], send_bits + MAC_HEADER_LEN + i * 8);
+    decompose_u8(raw_send_payload[i], mac_send_bits + MAC_HEADER_LEN + i * 8);
   }
-  send_bits_len = MAC_HEADER_LEN + raw_payload_len * 8;
-  ack_header_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, send_seq);
+  mac_send_bits_len = MAC_HEADER_LEN + raw_payload_len * 8;
+  mac_ack_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, mac_send_seq);
 }
 
 static void mac_send_retry(void) {
-  phy_transmit_frame(send_bits, send_bits_len);
-  time_ack_timeout = time_ns() + 100000000;
+  phy_transmit_frame(mac_send_bits, mac_send_bits_len);
+  mac_ack_timeout = time_ns() + 100000000;
 }
 
 static void mac_send_ack(const int seq) {
@@ -278,9 +279,9 @@ int main(int argc, char **argv) {
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
   while (mac_send || mac_recv) {
-    if (mac_send && ack_header_want == 0) {
+    if (mac_send && mac_ack_want == 0) {
       mac_send_prepare();
-      if (ack_header_want != 0) {
+      if (mac_ack_want != 0) {
         mac_send_retry();
       }
     }
@@ -298,14 +299,14 @@ int main(int argc, char **argv) {
           mac_handle_recv(bits + MAC_HEADER_LEN, len);
           recv_seq = (recv_seq + 1) & 0xF;
         }
-      } else if (ack_header_want != 0 && header == ack_header_want) {
-        send_seq = (send_seq + 1) & 0xF;
-        ack_header_want = 0;
+      } else if (mac_ack_want != 0 && header == mac_ack_want) {
+        mac_send_seq = (mac_send_seq + 1) & 0xF;
+        mac_ack_want = 0;
       }
       continue;
     }
 
-    if (ack_header_want != 0 && time_ns() > time_ack_timeout) {
+    if (mac_ack_want != 0 && time_ns() > mac_ack_timeout) {
       mac_send_retry();
     }
   }
