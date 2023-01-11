@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
     }
     struct sockaddr_in saddr_bind = {
         .sin_family = AF_INET,
-        .sin_port = htons(22222),
+        .sin_port = 0,
         .sin_addr = INADDR_ANY,
     };
     if (bind(ip_recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) <

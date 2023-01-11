@@ -8,6 +8,7 @@
 #define RATE 48000
 #define LEN(s) (sizeof(s) - 1)
 #define S_LEN(s) (s), LEN(s)
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 static inline uint8_t compose_u8(const bool *const bits) {
   uint8_t num = 0;
