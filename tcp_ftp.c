@@ -22,11 +22,11 @@ static char raw_send_payload[2][RAW_SEND_MAX];
 static char raw_recv_payload[RAW_RECV_MAX];
 static size_t raw_send_len[2] = {0, 0};
 static size_t raw_recv_len = 0;
-const struct iphdr *const ip_send_hdr_p[2] = {
+static struct iphdr *const ip_send_hdr_p[2] = {
     (struct iphdr *)raw_send_payload[0],
     (struct iphdr *)raw_send_payload[1],
 };
-const struct iphdr *const ip_recv_hdr_p = (struct iphdr *)raw_recv_payload;
+struct iphdr *const ip_recv_hdr_p = (struct iphdr *)raw_recv_payload;
 static char *const ip_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr),
     raw_send_payload[1] + sizeof(struct iphdr),
@@ -46,6 +46,45 @@ static int64_t tcp_ack_timeout[2] = {0, 0};
 static tcp_seq tcp_want_seq[2] = {0, 0};
 static FILE *tcp_output_stream[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
+
+static void tcp_fill_checksum(const bool d) {
+  tcp_send_hdr_p[d]->th_sum = 0;
+  const uint16_t tcp_len = ip_send_hdr_p[d]->tot_len - sizeof(struct iphdr);
+  struct {
+    uint32_t saddr, daddr;
+    uint8_t zeros, protocol;
+    uint16_t tcp_len;
+  } pseudo_hdr = {
+      .saddr = ip_send_hdr_p[d]->saddr,
+      .daddr = ip_send_hdr_p[d]->daddr,
+      .protocol = IPPROTO_TCP,
+      .tcp_len = htons(tcp_len),
+  };
+  uint32_t res = ~inet_checksum((uint8_t *)&pseudo_hdr, sizeof(pseudo_hdr)) +
+                 ~inet_checksum((uint8_t *)ip_send_payload[d], tcp_len);
+  tcp_send_hdr_p[d]->th_sum = ~((res >> 16) + (res & 0xFFFF));
+}
+
+static void tcp_syn_prepare(const bool d) {
+  *ip_send_hdr_p[d] = (struct iphdr){
+      .ihl = 5,
+      .version = 4,
+      .tot_len = sizeof(struct iphdr) + sizeof(struct tcphdr),
+      .ttl = 255,
+      .protocol = IPPROTO_TCP,
+      .saddr = addr_host.s_addr,
+      .daddr = addr_dest.s_addr,
+  };
+  *tcp_send_hdr_p[d] = (struct tcphdr){
+      .th_sport = htons(d ? 11110 : 11111),
+      .th_dport = htons(d ? 20 : 21),
+      .th_seq = htonl(rand()),
+      .th_off = 5,
+      .th_flags = TH_SYN,
+      .th_win = htons(1),
+  };
+  tcp_fill_checksum(d);
+}
 
 static void tcp_handle_recv(void) {
   if (ip_recv_hdr_p->saddr != addr_dest.s_addr) {
@@ -230,6 +269,7 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  srand(time_ns());
   tcp_output_stream[0] = stdout;
 
   pthread_t input_thread;
