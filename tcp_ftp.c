@@ -22,17 +22,51 @@ static char raw_send_payload[2][RAW_SEND_MAX];
 static char raw_recv_payload[RAW_RECV_MAX];
 static size_t raw_send_len[2] = {0, 0};
 static size_t raw_recv_len = 0;
+const struct iphdr *const ip_send_hdr_p[2] = {
+    (struct iphdr *)raw_send_payload[0],
+    (struct iphdr *)raw_send_payload[1],
+};
+const struct iphdr *const ip_recv_hdr_p = (struct iphdr *)raw_recv_payload;
 static char *const ip_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr),
     raw_send_payload[1] + sizeof(struct iphdr),
 };
 static char *const ip_recv_payload = raw_recv_payload + sizeof(struct iphdr);
+static struct tcphdr *const tcp_send_hdr_p[2] = {
+    (struct tcphdr *)(raw_send_payload[0] + sizeof(struct iphdr)),
+    (struct tcphdr *)(raw_send_payload[1] + sizeof(struct iphdr)),
+};
+static struct tcphdr *const tcp_recv_hdr_p =
+    (struct tcphdr *)(raw_recv_payload + sizeof(struct iphdr));
 static char *const tcp_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr) + sizeof(struct tcphdr),
     raw_send_payload[1] + sizeof(struct iphdr) + sizeof(struct tcphdr),
 };
-
+static int64_t tcp_ack_timeout[2] = {0, 0};
+static tcp_seq tcp_want_seq[2] = {0, 0};
 static int tcp_states[2] = {TCP_CLOSE, TCP_CLOSE};
+
+static void tcp_handle_recv(void) {
+  if (ip_recv_hdr_p->saddr != addr_dest.s_addr) {
+    return;
+  }
+  const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
+  if (port_src != 21 && port_src != 20) {
+    return;
+  }
+  const bool d = port_src == 20;
+  if (tcp_states[d] == TCP_CLOSE) {
+    return;
+  }
+  if (tcp_recv_hdr_p->th_flags & TH_RST) {
+    raw_send_len[d] = 0;
+    tcp_states[d] = TCP_CLOSE;
+    return;
+  }
+  if (!(tcp_recv_hdr_p->th_flags & TH_ACK)) {
+    return;
+  }
+}
 
 static const char *const ftp_cmd_names[] = {
     "USER", "PASS", "PWD", "CWD", "PASV", "LIST", "RETR",
