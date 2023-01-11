@@ -51,10 +51,10 @@ static inline void decompose_u32(const uint32_t num, bool *const bits) {
   }
 }
 
-static inline uint16_t inet_checksum(const uint16_t *words, int count) {
+static inline uint16_t inet_checksum(const uint8_t *bytes, size_t count) {
   uint16_t res = 0;
-  while (--count >= 0) {
-    uint32_t tmp = res + *words++;
+  for (size_t i = 0; i < count; i += 2) {
+    uint32_t tmp = res + (i == count - 1 ? bytes[i] : *(uint16_t *)&bytes[i]);
     res = (tmp >> 16) + (tmp & 0xFFFF);
   }
   return ~res;
