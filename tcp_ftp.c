@@ -1,9 +1,17 @@
+#include <arpa/inet.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+
+static struct in_addr addr_dest;
+
+static int tcp_states[2] = {TCP_CLOSE, TCP_CLOSE};
 
 static const char *const ftp_cmds[] = {
     "USER", "PASS", "PWD", "CWD", "PASV", "LIST", "RETR",
@@ -71,33 +79,54 @@ static const char *ftp_parse_get(void) {
   return NULL;
 }
 
-int main(void) {
+static size_t ftp_next_cmd(char *const buf, const size_t buf_len) {
   bool past_cmd = false;
   const char *cmd = NULL;
+  size_t new_len = 0;
   for (;;) {
     const int c = getchar();
     if (c == EOF) {
-      break;
+      return 0;
     }
     if (!past_cmd) {
       if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+        past_cmd = true;
         cmd = ftp_parse_get();
         ftp_parse_reset();
-        past_cmd = true;
         if (cmd != NULL) {
-          printf("%s", cmd);
+          strncpy(buf, cmd, buf_len);
+          new_len = strlen(cmd);
+          if (new_len > buf_len) {
+            new_len = buf_len;
+          }
         }
       } else {
         ftp_parse_add(c);
       }
     }
-    if (past_cmd && cmd != NULL) {
-      putchar(c);
+    if (cmd != NULL && new_len < buf_len) {
+      buf[new_len++] = c;
     }
     if (c == '\n') {
+      if (cmd != NULL) {
+        return new_len;
+      }
       past_cmd = false;
       cmd = NULL;
     }
   }
+}
+
+int main(int argc, char **argv) {
+  if (argc <= 1) {
+    fprintf(stderr, "Missing argument\n");
+    return EXIT_FAILURE;
+  }
+  const char *const addr_str = argv[1];
+  if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", addr_str);
+    return EXIT_FAILURE;
+  }
+
   return 0;
 }
