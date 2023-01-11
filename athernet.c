@@ -16,15 +16,6 @@
 #include "common.h"
 #include "physical.h"
 
-static uint16_t inet_checksum(const uint16_t *words, int count) {
-  uint16_t res = 0;
-  while (--count >= 0) {
-    uint32_t tmp = res + *words++;
-    res = (tmp >> 16) + (tmp & 0xFFFF);
-  }
-  return ~res;
-}
-
 static enum {
   NODE_UDP,
   NODE_NAT,
@@ -56,10 +47,10 @@ static struct in_addr addr_host;
 static struct in_addr addr_dest;
 static int port_dest = 0;
 
-static int send_fd = -1;
-static int recv_fd = -1;
+static int ip_send_fd = -1;
+static int ip_recv_fd = -1;
 
-static void send_prepare(void) {
+static void mac_send_prepare(void) {
   struct iphdr *ip_hdr_p = (struct iphdr *)send_raw;
   *ip_hdr_p = (struct iphdr){
       .ihl = 5,
@@ -93,7 +84,8 @@ static void send_prepare(void) {
     };
     raw_payload_len = (ip_payload - send_raw) + ip_payload_len;
   } else if (node_type == NODE_NAT) {
-    ssize_t len = recvfrom(recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
+    ssize_t len =
+        recvfrom(ip_recv_fd, S_LEN(send_raw), MSG_DONTWAIT, NULL, NULL);
     if (len < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
         perror(NULL);
@@ -136,7 +128,7 @@ static void mac_send_ack(const int seq) {
   phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
 }
 
-static void handle_recv(const bool *const bits, const size_t len) {
+static void mac_handle_recv(const bool *const bits, const size_t len) {
   char recv_raw[PHY_PAYLOAD_MAX / 8] = {0};
   for (size_t i = 0; i < len; i += 8) {
     recv_raw[i / 8] = compose_u8(bits + i);
@@ -177,7 +169,7 @@ static void handle_recv(const bool *const bits, const size_t len) {
         .sin_addr = ip_hdr_p->daddr,
         .sin_port = 0,
     };
-    if (sendto(send_fd, recv_raw, raw_payload_len, 0,
+    if (sendto(ip_send_fd, recv_raw, raw_payload_len, 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
     }
@@ -200,13 +192,13 @@ int main(int argc, char **argv) {
     mac_recv = true;
     mac_self = 2;
     mac_other = 1;
-    send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if (send_fd < 0) {
+    ip_send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if (ip_send_fd < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
-    recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-    if (recv_fd < 0) {
+    ip_recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
+    if (ip_recv_fd < 0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
@@ -215,7 +207,8 @@ int main(int argc, char **argv) {
         .sin_port = htons(22222),
         .sin_addr = INADDR_ANY,
     };
-    if (bind(recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) < 0) {
+    if (bind(ip_recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) <
+        0) {
       perror(NULL);
       return EXIT_FAILURE;
     }
@@ -286,7 +279,7 @@ int main(int argc, char **argv) {
 
   while (mac_send || mac_recv) {
     if (mac_send && ack_header_want == 0) {
-      send_prepare();
+      mac_send_prepare();
       if (ack_header_want != 0) {
         mac_send_retry();
       }
@@ -302,7 +295,7 @@ int main(int argc, char **argv) {
         mac_send_ack(seq);
         static int recv_seq = 0;
         if (seq == recv_seq) {
-          handle_recv(bits + MAC_HEADER_LEN, len);
+          mac_handle_recv(bits + MAC_HEADER_LEN, len);
           recv_seq = (recv_seq + 1) & 0xF;
         }
       } else if (ack_header_want != 0 && header == ack_header_want) {

@@ -51,6 +51,15 @@ static inline void decompose_u32(const uint32_t num, bool *const bits) {
   }
 }
 
+static inline uint16_t inet_checksum(const uint16_t *words, int count) {
+  uint16_t res = 0;
+  while (--count >= 0) {
+    uint32_t tmp = res + *words++;
+    res = (tmp >> 16) + (tmp & 0xFFFF);
+  }
+  return ~res;
+}
+
 static inline int64_t time_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
