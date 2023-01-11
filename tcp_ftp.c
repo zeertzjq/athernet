@@ -50,8 +50,7 @@ static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 
 static void tcp_fill_checksum(const bool d) {
   tcp_send_hdr_p[d]->th_sum = 0;
-  const uint16_t tcp_len =
-      ntohs(ip_send_hdr_p[d]->tot_len) - sizeof(struct iphdr);
+  const uint16_t tcp_len = raw_send_len[d] - sizeof(struct iphdr);
   struct {
     uint32_t saddr, daddr;
     uint8_t zeros, protocol;
@@ -71,7 +70,6 @@ static void tcp_syn_prepare(const bool d) {
   *ip_send_hdr_p[d] = (struct iphdr){
       .ihl = 5,
       .version = 4,
-      .tot_len = htons(sizeof(struct iphdr) + sizeof(struct tcphdr)),
       .ttl = 255,
       .protocol = IPPROTO_TCP,
       .saddr = addr_host.s_addr,
@@ -85,8 +83,8 @@ static void tcp_syn_prepare(const bool d) {
       .th_flags = TH_SYN,
       .th_win = htons(1),
   };
-  tcp_fill_checksum(d);
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
+  tcp_fill_checksum(d);
   tcp_ack_timeout[d] = 0;
   tcp_state[d] = TCP_SYN_SENT;
 }
@@ -113,8 +111,8 @@ static void tcp_handle_recv(void) {
   }
   const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
   const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
-  const size_t tcp_recv_len = (ntohs(ip_recv_hdr_p->tot_len) -
-                               sizeof(struct iphdr) - tcp_recv_header_len);
+  const size_t tcp_recv_len =
+      raw_recv_len - sizeof(struct iphdr) - tcp_recv_header_len;
   bool need_reply = true;
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
@@ -154,8 +152,8 @@ static void tcp_handle_recv(void) {
   tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
   tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
   if (need_reply) {
-    tcp_fill_checksum(d);
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
+    tcp_fill_checksum(d);
     tcp_ack_timeout[d] = 0;
   }
 }
@@ -344,9 +342,9 @@ int main(int argc, char **argv) {
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 && ftp_cmd_len > 0) {
       memcpy(tcp_send_payload[0], ftp_cmd, ftp_cmd_len);
-      tcp_fill_checksum(0);
       raw_send_len[0] =
           sizeof(struct iphdr) + sizeof(struct tcphdr) + ftp_cmd_len;
+      tcp_fill_checksum(0);
       tcp_ack_timeout[0] = 0;
     }
     sleep_ns(1000000);
