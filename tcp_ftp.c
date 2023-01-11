@@ -85,6 +85,7 @@ static void tcp_syn_prepare(const bool d) {
   };
   tcp_fill_checksum(d);
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
+  tcp_state[d] = TCP_SYN_SENT;
 }
 
 static void tcp_handle_recv(void) {
@@ -107,22 +108,52 @@ static void tcp_handle_recv(void) {
   if (!(tcp_recv_hdr_p->th_flags & TH_ACK)) {
     return;
   }
-  if (tcp_recv_hdr_p->th_flags & TH_SYN) {
-    if (tcp_state[d] == TCP_SYN_SENT) {
-      tcp_state[d] = TCP_ESTABLISHED;
-    } else if (tcp_state[d] != TCP_ESTABLISHED) {
-      return;
-    }
-  }
   const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
   const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
   const size_t tcp_recv_payload_len =
       (ip_recv_hdr_p->tot_len - sizeof(struct iphdr) - tcp_recv_header_len);
-  if (tcp_recv_payload_len != 0) {
-    if (tcp_recv_hdr_p->th_seq == tcp_want_seq[d]) {
-      fwrite(tcp_recv_payload, 1, tcp_recv_payload_len, tcp_output_stream[d]);
+  bool need_reply = true;
+  if (tcp_recv_hdr_p->th_flags & TH_SYN) {
+    if (tcp_state[d] == TCP_SYN_SENT) {
+      tcp_state[d] = TCP_ESTABLISHED;
+    } else if (raw_send_len[d] != 0 || tcp_state[d] != TCP_ESTABLISHED) {
+      return;
+    }
+  } else if (tcp_recv_hdr_p->th_seq != htons(tcp_want_seq[d])) {
+    return;
+  } else if (tcp_recv_hdr_p->th_flags & TH_FIN) {
+    if (tcp_state[d] == TCP_ESTABLISHED) {
+      tcp_state[d] = TCP_CLOSE_WAIT;
+    } else if (tcp_state[d] == TCP_FIN_WAIT1) {
+      tcp_state[d] = TCP_CLOSING;
+    } else if (tcp_state[d] == TCP_FIN_WAIT2) {
+      tcp_state[d] = TCP_TIME_WAIT;
+    }
+  } else {
+    if (tcp_state[d] == TCP_FIN_WAIT1) {
+      tcp_state[d] = TCP_FIN_WAIT2;
+    } else if (tcp_state[d] == TCP_CLOSING) {
+      tcp_state[d] = TCP_TIME_WAIT;
+    } else if (tcp_state[d] == TCP_LAST_ACK) {
+      tcp_state[d] = TCP_CLOSE;
+      return;
+    }
+    if (tcp_recv_payload_len == 0) {
+      need_reply = false;
     }
   }
+  raw_send_len[d] = 0;
+  if (tcp_recv_payload_len != 0) {
+    fwrite(tcp_recv_payload, 1, tcp_recv_payload_len, tcp_output_stream[d]);
+  }
+  tcp_want_seq[d] = ntohs(tcp_recv_hdr_p->th_seq) + 1;
+  tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
+  tcp_send_hdr_p[d]->th_ack = htons(tcp_want_seq[d]);
+  if (!need_reply) {
+    return;
+  }
+  tcp_fill_checksum(d);
+  raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
 }
 
 static const char *const ftp_cmd_name[] = {
