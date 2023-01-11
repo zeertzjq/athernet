@@ -61,9 +61,20 @@ static void tcp_fill_checksum(const bool d) {
       .protocol = IPPROTO_TCP,
       .tcp_len = htons(tcp_len),
   };
-  uint32_t res = ~inet_checksum((uint8_t *)&pseudo_hdr, sizeof(pseudo_hdr)) +
-                 ~inet_checksum((uint8_t *)ip_send_payload[d], tcp_len);
-  tcp_send_hdr_p[d]->th_sum = ~((res >> 16) + (res & 0xFFFF));
+  uint32_t sum = 0;
+  for (size_t i = 0; i < sizeof(pseudo_hdr) / 2; i++) {
+    sum += ((uint16_t *)&pseudo_hdr)[i];
+  }
+  for (size_t i = 0; i < tcp_len / 2; i++) {
+    sum += ((uint16_t *)ip_send_payload[d])[i];
+  }
+  if (tcp_len & 1) {
+    sum += ((uint8_t *)ip_send_payload[d])[tcp_len - 1];
+  }
+  while (sum >> 16) {
+    sum = (sum & 0xFFFF) + (sum >> 16);
+  }
+  tcp_send_hdr_p[d]->th_sum = ~sum;
 }
 
 static void tcp_syn_prepare(const bool d) {
