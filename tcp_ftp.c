@@ -26,6 +26,7 @@ static char *const ip_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr),
     raw_send_payload[1] + sizeof(struct iphdr),
 };
+static char *const ip_recv_payload = raw_recv_payload + sizeof(struct iphdr);
 static char *const tcp_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr) + sizeof(struct tcphdr),
     raw_send_payload[1] + sizeof(struct iphdr) + sizeof(struct tcphdr),
