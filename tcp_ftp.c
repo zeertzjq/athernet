@@ -44,7 +44,8 @@ static char *const tcp_send_payload[2] = {
 };
 static int64_t tcp_ack_timeout[2] = {0, 0};
 static tcp_seq tcp_want_seq[2] = {0, 0};
-static int tcp_states[2] = {TCP_CLOSE, TCP_CLOSE};
+static FILE *tcp_output_stream[2] = {NULL, NULL};
+static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 
 static void tcp_handle_recv(void) {
   if (ip_recv_hdr_p->saddr != addr_dest.s_addr) {
@@ -55,23 +56,36 @@ static void tcp_handle_recv(void) {
     return;
   }
   const bool d = port_src == 20;
-  if (tcp_states[d] == TCP_CLOSE) {
+  if (tcp_state[d] == TCP_CLOSE) {
     return;
   }
   if (tcp_recv_hdr_p->th_flags & TH_RST) {
     raw_send_len[d] = 0;
-    tcp_states[d] = TCP_CLOSE;
+    tcp_state[d] = TCP_CLOSE;
     return;
   }
   if (!(tcp_recv_hdr_p->th_flags & TH_ACK)) {
     return;
   }
+  if (tcp_recv_hdr_p->th_flags & TH_SYN) {
+    if (tcp_state[d] == TCP_SYN_SENT) {
+      tcp_state[d] = TCP_ESTABLISHED;
+    } else if (tcp_state[d] != TCP_ESTABLISHED) {
+      return;
+    }
+  } else if (tcp_recv_hdr_p->th_seq == tcp_want_seq[d]) {
+    const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
+    const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
+    const size_t tcp_recv_payload_len =
+        (ip_recv_hdr_p->tot_len - sizeof(struct iphdr) - tcp_recv_header_len);
+    fwrite(tcp_recv_payload, 1, tcp_recv_payload_len, tcp_output_stream[d]);
+  }
 }
 
-static const char *const ftp_cmd_names[] = {
+static const char *const ftp_cmd_name[] = {
     "USER", "PASS", "PWD", "CWD", "PASV", "LIST", "RETR",
 };
-static size_t ftp_cmd_matched[ARRAY_SIZE(ftp_cmd_names)][4] = {0};
+static size_t ftp_cmd_matched[ARRAY_SIZE(ftp_cmd_name)][4] = {0};
 
 static void ftp_parse_reset(void) {
   memset(ftp_cmd_matched, 0, sizeof(ftp_cmd_matched));
@@ -83,8 +97,8 @@ static void ftp_parse_add(int c) {
   } else if (c < 'A' || c > 'Z') {
     return;
   }
-  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_names); cmd_idx++) {
-    const char *const cmd = ftp_cmd_names[cmd_idx];
+  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_name); cmd_idx++) {
+    const char *const cmd = ftp_cmd_name[cmd_idx];
     const size_t cmd_len = strlen(cmd);
     size_t *const matched_old = ftp_cmd_matched[cmd_idx];
     size_t matched_new[4] = {0};
@@ -109,8 +123,8 @@ static void ftp_parse_add(int c) {
 static const char *ftp_parse_get(void) {
   size_t max_matched = 0;
   const char *max_matched_cmd = NULL;
-  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_names); cmd_idx++) {
-    const char *const cmd = ftp_cmd_names[cmd_idx];
+  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_name); cmd_idx++) {
+    const char *const cmd = ftp_cmd_name[cmd_idx];
     const size_t len = ftp_cmd_matched[cmd_idx][strlen(cmd) - 1];
     if (len > max_matched) {
       max_matched = len;
@@ -123,11 +137,11 @@ static const char *ftp_parse_get(void) {
     return max_matched_cmd;
   }
   printf("Do you mean:");
-  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_names); cmd_idx++) {
-    const char *const cmd = ftp_cmd_names[cmd_idx];
+  for (size_t cmd_idx = 0; cmd_idx < ARRAY_SIZE(ftp_cmd_name); cmd_idx++) {
+    const char *const cmd = ftp_cmd_name[cmd_idx];
     const size_t len = ftp_cmd_matched[cmd_idx][strlen(cmd) - 1];
     if (len == max_matched) {
-      printf(" %s", ftp_cmd_names[cmd_idx]);
+      printf(" %s", ftp_cmd_name[cmd_idx]);
     }
   }
   puts("");
@@ -213,12 +227,14 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  tcp_output_stream[0] = stdout;
+
   pthread_t input_thread;
   pthread_create(&input_thread, NULL, input_loop, NULL);
 
-  while (tcp_states[0] != TCP_CLOSE || tcp_states[1] != TCP_CLOSE ||
+  while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
          !input_stopped) {
-    if (!input_stopped && tcp_states[0] == TCP_CLOSE) {
+    if (!input_stopped && tcp_state[0] == TCP_CLOSE) {
     }
   }
 
