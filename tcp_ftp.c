@@ -73,12 +73,15 @@ static void tcp_handle_recv(void) {
     } else if (tcp_state[d] != TCP_ESTABLISHED) {
       return;
     }
-  } else if (tcp_recv_hdr_p->th_seq == tcp_want_seq[d]) {
-    const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
-    const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
-    const size_t tcp_recv_payload_len =
-        (ip_recv_hdr_p->tot_len - sizeof(struct iphdr) - tcp_recv_header_len);
-    fwrite(tcp_recv_payload, 1, tcp_recv_payload_len, tcp_output_stream[d]);
+  }
+  const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
+  const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
+  const size_t tcp_recv_payload_len =
+      (ip_recv_hdr_p->tot_len - sizeof(struct iphdr) - tcp_recv_header_len);
+  if (tcp_recv_payload_len != 0) {
+    if (tcp_recv_hdr_p->th_seq == tcp_want_seq[d]) {
+      fwrite(tcp_recv_payload, 1, tcp_recv_payload_len, tcp_output_stream[d]);
+    }
   }
 }
 
@@ -149,11 +152,11 @@ static const char *ftp_parse_get(void) {
 }
 
 #define FTP_CMD_MAXLEN 400
+static char ftp_cmd[FTP_CMD_MAXLEN];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 
 static void *input_loop(void *args) {
-  char *const ftp_cmd = tcp_send_payload[0];
   bool past_cmd = false;
   const char *cmd = NULL;
   size_t cmd_len = 0;
