@@ -48,6 +48,8 @@ static tcp_seq tcp_want_seq[2] = {0, 0};
 static FILE *tcp_output_stream[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 
+static volatile sig_atomic_t ftp_cmd_len = 0;
+
 static void tcp_fill_checksum(const bool d) {
   tcp_send_hdr_p[d]->th_sum = 0;
   const uint16_t tcp_len = raw_send_len[d] - sizeof(struct iphdr);
@@ -155,11 +157,16 @@ static void tcp_handle_recv(void) {
       need_reply = false;
     }
   }
+  if (!d && raw_send_len[0] > sizeof(struct iphdr) + sizeof(struct tcphdr)) {
+    ftp_cmd_len = 0;
+  }
   raw_send_len[d] = 0;
   if (tcp_recv_len != 0) {
     fwrite(tcp_recv_payload, 1, tcp_recv_len, tcp_output_stream[d]);
+    tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
+  } else if (need_reply) {
+    tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
   }
-  tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
   tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
   tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
   if (need_reply) {
@@ -247,7 +254,6 @@ static const char *ftp_parse_get(void) {
 
 #define FTP_CMD_MAXLEN 400
 static char ftp_cmd[FTP_CMD_MAXLEN];
-static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 
 static void *input_loop(void *args) {
