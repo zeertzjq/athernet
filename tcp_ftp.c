@@ -406,11 +406,6 @@ int main(int argc, char **argv) {
     perror(NULL);
     return EXIT_FAILURE;
   }
-  struct sockaddr_in saddr_dest = {
-      .sin_family = AF_INET,
-      .sin_addr = addr_dest[0],
-      .sin_port = 0,
-  };
 
   srand(time_ns());
 
@@ -426,9 +421,14 @@ int main(int argc, char **argv) {
     }
     for (int d = 1; d >= 0; d--) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
+        struct sockaddr_in saddr_dest = {
+            .sin_family = AF_INET,
+            .sin_addr = ip_send_hdr_p[d]->daddr,
+            .sin_port = 0,
+        };
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        tcp_timeout[d] = time_ns() + 1000000000;
+        tcp_timeout[d] = time_ns() + 5000000000;
         if (!tcp_need_ack(d)) {
           raw_send_len[d] = 0;
         }
