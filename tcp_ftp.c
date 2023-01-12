@@ -16,7 +16,7 @@
 #define RAW_RECV_MAX 640
 static struct in_addr addr_host;
 static struct in_addr addr_dest[2];
-static uint16_t port_host[2] = {0, 0};
+static uint16_t port_host[2] = {11111, 11110};
 static uint16_t port_dest[2] = {21, 0};
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
@@ -81,7 +81,6 @@ static void tcp_fill_checksum(const bool d) {
 }
 
 static void tcp_prepare_syn(const bool d) {
-  port_host[d] = rand();
   *ip_send_hdr_p[d] = (struct iphdr){
       .ihl = 5,
       .version = 4,
