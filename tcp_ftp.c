@@ -16,6 +16,7 @@
 #define RAW_RECV_MAX 640
 static struct in_addr addr_host;
 static struct in_addr addr_dest[2];
+static uint16_t port_host[2] = {11111, 11110};
 static uint16_t port_dest[2] = {21, 0};
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
@@ -89,7 +90,7 @@ static void tcp_prepare_syn(const bool d) {
       .daddr = addr_dest[d].s_addr,
   };
   *tcp_send_hdr_p[d] = (struct tcphdr){
-      .th_sport = htons(d ? 11110 : 11111),
+      .th_sport = htons(port_host[d]),
       .th_dport = htons(port_dest[d]),
       .th_seq = htonl(rand()),
       .th_off = 5,
@@ -172,6 +173,8 @@ static ssize_t tcp_handle_recv(const bool d) {
       need_reply = false;
     }
     raw_send_len[d] = 0;
+  } else if (tcp_recv_len == 0) {
+    need_reply = false;
   }
   if (tcp_recv_len > 0) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
@@ -425,14 +428,16 @@ int main(int argc, char **argv) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        tcp_timeout[d] = time_ns() + 1000000000;
-        if (!tcp_need_ack(d)) {
+        if (tcp_need_ack(d)) {
+          tcp_timeout[d] = time_ns() + 1000000000;
+        } else {
           raw_send_len[d] = 0;
         }
         break;
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
-      } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
+      }
+      if (tcp_state[d] == TCP_TIME_WAIT) {
         tcp_state[d] = TCP_CLOSE;
       }
     }
@@ -444,6 +449,7 @@ int main(int argc, char **argv) {
         ftp_close_file();
         ftp_cmd[ftp_cmd_len - 1] = '\0';
         tcp_output_file[1] = fopen(ftp_cmd, "w");
+        ftp_cmd[ftp_cmd_len - 1] = '\n';
       }
       tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
@@ -456,11 +462,12 @@ int main(int argc, char **argv) {
       }
     } else {
       raw_recv_len = recv_len;
-      const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
-      const uint32_t addr_src = ip_recv_hdr_p->saddr;
       for (int d = 0; d <= 1; d++) {
-        if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
-            addr_src == addr_dest[d].s_addr) {
+        if (tcp_state[d] != TCP_CLOSE &&
+            ntohs(tcp_recv_hdr_p->th_sport) == port_dest[d] &&
+            ip_recv_hdr_p->saddr == addr_dest[d].s_addr &&
+            ntohs(tcp_recv_hdr_p->th_dport) == port_host[d] &&
+            ip_recv_hdr_p->daddr == addr_host.s_addr) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
           if (d == 0 && tcp_recv_len >= 0) {
             ftp_handle_reply(tcp_recv_len);
