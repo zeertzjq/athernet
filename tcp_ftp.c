@@ -103,9 +103,22 @@ static void tcp_prepare_syn(const bool d) {
 static void tcp_prepare_data(const bool d, const char *const data,
                              const size_t len) {
   memcpy(tcp_send_payload[d], data, len);
+  tcp_send_hdr_p[d]->th_flags = TH_ACK;
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr) + len;
   tcp_fill_checksum(d);
   tcp_ack_timeout[d] = 0;
+}
+
+static void tcp_prepare_fin(const bool d) {
+  tcp_send_hdr_p[d]->th_flags = TH_ACK | TH_FIN;
+  raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
+  tcp_fill_checksum(d);
+  tcp_ack_timeout[d] = 0;
+  if (tcp_state[d] == TCP_ESTABLISHED) {
+    tcp_state[d] = TCP_FIN_WAIT1;
+  } else if (tcp_state[d] == TCP_CLOSE_WAIT) {
+    tcp_state[d] = TCP_LAST_ACK;
+  }
 }
 
 static void tcp_handle_recv(void) {
@@ -136,7 +149,6 @@ static void tcp_handle_recv(void) {
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
       tcp_state[d] = TCP_ESTABLISHED;
-      tcp_send_hdr_p[d]->th_flags = TH_ACK;
     } else if (raw_send_len[d] != 0 || tcp_state[d] != TCP_ESTABLISHED) {
       return;
     }
@@ -170,6 +182,7 @@ static void tcp_handle_recv(void) {
   } else if (need_reply) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
   }
+  tcp_send_hdr_p[d]->th_flags = TH_ACK;
   tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
   tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
   if (need_reply) {
@@ -349,6 +362,8 @@ int main(int argc, char **argv) {
          !input_stopped) {
     if (!input_stopped && tcp_state[0] == TCP_CLOSE) {
       tcp_prepare_syn(0);
+    } else if (input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
+      tcp_prepare_fin(0);
     }
     for (int d = 0; d <= 1; d++) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
@@ -361,7 +376,8 @@ int main(int argc, char **argv) {
         }
       }
     }
-    if (raw_send_len[0] == 0 && raw_send_len[1] == 0 && ftp_cmd_len > 0) {
+    if (raw_send_len[0] == 0 && raw_send_len[1] == 0 &&
+        tcp_state[0] == TCP_ESTABLISHED && ftp_cmd_len > 0) {
       tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
     sleep_ns(1000000);
