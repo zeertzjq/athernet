@@ -127,14 +127,12 @@ static void tcp_handle_recv(void) {
   const uint32_t addr_src = ip_recv_hdr_p->saddr;
   int d;
   for (d = 0; d <= 1; d++) {
-    if (port_src == port_dest[d] && addr_src == addr_dest[d].s_addr) {
+    if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
+        addr_src == addr_dest[d].s_addr) {
       break;
     }
   }
   if (d > 1) {
-    return;
-  }
-  if (tcp_state[d] == TCP_CLOSE) {
     return;
   }
   if (tcp_recv_hdr_p->th_flags & TH_RST) {
