@@ -15,7 +15,8 @@
 #define RAW_SEND_MAX 600
 #define RAW_RECV_MAX 640
 static struct in_addr addr_host;
-static struct in_addr addr_dest;
+static struct in_addr addr_dest[2];
+static uint16_t port_dest[2] = {21, 0};
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
 
@@ -84,7 +85,7 @@ static void tcp_prepare_syn(const bool d) {
       .ttl = 255,
       .protocol = IPPROTO_TCP,
       .saddr = addr_host.s_addr,
-      .daddr = addr_dest.s_addr,
+      .daddr = addr_dest[d].s_addr,
   };
   *tcp_send_hdr_p[d] = (struct tcphdr){
       .th_sport = htons(d ? 11110 : 11111),
@@ -122,14 +123,17 @@ static void tcp_prepare_fin(const bool d) {
 }
 
 static void tcp_handle_recv(void) {
-  if (ip_recv_hdr_p->saddr != addr_dest.s_addr) {
-    return;
-  }
   const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
-  if (port_src != 21 && port_src != 20) {
+  const uint32_t addr_src = ip_recv_hdr_p->saddr;
+  int d;
+  for (d = 0; d <= 1; d++) {
+    if (port_src == port_dest[d] && addr_src == addr_dest[d].s_addr) {
+      break;
+    }
+  }
+  if (d > 1) {
     return;
   }
-  const bool d = port_src == 20;
   if (tcp_state[d] == TCP_CLOSE) {
     return;
   }
@@ -324,7 +328,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Invalid IP address: %s\n", argv[1]);
     return EXIT_FAILURE;
   }
-  if (inet_pton(AF_INET, argv[2], &addr_dest) == 0) {
+  if (inet_pton(AF_INET, argv[2], &addr_dest[0]) == 0) {
     fprintf(stderr, "Invalid IP address: %s\n", argv[2]);
     return EXIT_FAILURE;
   }
@@ -351,7 +355,7 @@ int main(int argc, char **argv) {
   }
   struct sockaddr_in saddr_dest = {
       .sin_family = AF_INET,
-      .sin_addr = addr_dest,
+      .sin_addr = addr_dest[0],
       .sin_port = 0,
   };
 
