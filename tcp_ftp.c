@@ -288,6 +288,7 @@ static void ftp_handle_reply(const size_t reply_len) {
     return;
   }
   char *reply_payload = raw_recv_payload + raw_recv_len - reply_len;
+  reply_payload[reply_len] = '\0';
   if (memcmp(reply_payload, "227", 3) == 0) {
     char *left_paren = strchr(reply_payload, '(');
     if (left_paren == NULL) {
@@ -313,7 +314,7 @@ static void ftp_handle_reply(const size_t reply_len) {
     if (comma5 == NULL) {
       return;
     }
-    char *right_paren = strchr(comma5 + 1, '(');
+    char *right_paren = strchr(comma5 + 1, ')');
     if (right_paren == NULL) {
       return;
     }
