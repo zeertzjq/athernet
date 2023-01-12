@@ -163,6 +163,7 @@ static ssize_t tcp_handle_recv(const bool d) {
     } else if (tcp_state[d] == TCP_CLOSING) {
       tcp_state[d] = TCP_TIME_WAIT;
     } else if (tcp_state[d] == TCP_LAST_ACK) {
+      raw_send_len[d] = 0;
       tcp_state[d] = TCP_CLOSE;
       return -1;
     }
@@ -424,6 +425,9 @@ int main(int argc, char **argv) {
       tcp_prepare_fin(0);
     }
     for (int d = 1; d >= 0; d--) {
+      if (tcp_state[d] == TCP_CLOSE) {
+        continue;
+      }
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
         struct sockaddr_in saddr_dest = {
             .sin_family = AF_INET,
@@ -432,7 +436,7 @@ int main(int argc, char **argv) {
         };
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        tcp_timeout[d] = time_ns() + 5000000000;
+        tcp_timeout[d] = time_ns() + 2000000000;
         if (!tcp_need_ack(d)) {
           raw_send_len[d] = 0;
         }
@@ -440,6 +444,7 @@ int main(int argc, char **argv) {
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
       } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
+        raw_send_len[d] = 0;
         tcp_state[d] = TCP_CLOSE;
       }
     }
