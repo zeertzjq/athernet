@@ -146,9 +146,6 @@ static ssize_t tcp_handle_recv(const bool d) {
   const size_t tcp_recv_len =
       raw_recv_len - sizeof(struct iphdr) - tcp_recv_hdr_len;
   bool need_reply = true;
-  if (raw_recv_len == 94) {
-    fprintf(stderr, "!!!94!!!");
-  }
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
       tcp_state[d] = TCP_ESTABLISHED;
@@ -177,11 +174,7 @@ static ssize_t tcp_handle_recv(const bool d) {
       tcp_close(d);
       return -1;
     }
-    if (tcp_recv_len > 0) {
-      FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
-      fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
-      fflush(output);
-    } else {
+    if (tcp_recv_len == 0) {
       need_reply = false;
     }
     raw_send_len[d] = 0;
@@ -189,6 +182,9 @@ static ssize_t tcp_handle_recv(const bool d) {
     need_reply = false;
   }
   if (tcp_recv_len > 0) {
+    FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
+    fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
+    fflush(output);
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
   } else if (need_reply) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
@@ -455,7 +451,9 @@ int main(int argc, char **argv) {
         break;
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
-      } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
+      } else if ((tcp_state[d] == TCP_TIME_WAIT ||
+                  tcp_state[d] == TCP_LAST_ACK) &&
+                 time_ns() > tcp_timeout[d]) {
         tcp_close(d);
       }
     }
