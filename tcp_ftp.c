@@ -340,10 +340,6 @@ static void ftp_handle_reply(const size_t reply_len) {
     }
     port_dest[1] = (atoi(comma4 + 1) << 8) + atoi(comma5 + 1);
     tcp_prepare_syn(1);
-  } else if (tcp_state[1] == TCP_ESTABLISHED &&
-             memcmp(reply_payload, "226", 3) == 0) {
-    tcp_prepare_fin(1);
-    fprintf(stderr, "!!!END!!!");
   }
 }
 
