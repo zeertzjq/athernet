@@ -185,6 +185,7 @@ static ssize_t tcp_handle_recv(const bool d) {
         tcp_state[d] = TCP_CLOSING;
       }
     }
+    need_reply = true;
   }
   if (tcp_recv_len > 0) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
