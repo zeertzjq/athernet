@@ -77,7 +77,7 @@ static void tcp_fill_checksum(const bool d) {
   tcp_send_hdr_p[d]->th_sum = ~sum;
 }
 
-static void tcp_syn_prepare(const bool d) {
+static void tcp_prepare_syn(const bool d) {
   *ip_send_hdr_p[d] = (struct iphdr){
       .ihl = 5,
       .version = 4,
@@ -100,7 +100,7 @@ static void tcp_syn_prepare(const bool d) {
   tcp_state[d] = TCP_SYN_SENT;
 }
 
-static void tcp_data_prepare(const bool d, const char *const data,
+static void tcp_prepare_data(const bool d, const char *const data,
                              const size_t len) {
   memcpy(tcp_send_payload[d], data, len);
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr) + len;
@@ -348,7 +348,7 @@ int main(int argc, char **argv) {
   while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
          !input_stopped) {
     if (!input_stopped && tcp_state[0] == TCP_CLOSE) {
-      tcp_syn_prepare(0);
+      tcp_prepare_syn(0);
     }
     for (int d = 0; d <= 1; d++) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
@@ -362,7 +362,7 @@ int main(int argc, char **argv) {
       }
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 && ftp_cmd_len > 0) {
-      tcp_data_prepare(0, ftp_cmd, ftp_cmd_len);
+      tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
     sleep_ns(1000000);
     ssize_t recv_len =
