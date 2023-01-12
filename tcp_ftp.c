@@ -167,8 +167,9 @@ static ssize_t tcp_handle_recv(const bool d) {
       return -1;
     }
     if (tcp_recv_len > 0) {
-      fwrite(tcp_recv_payload, 1, tcp_recv_len,
-             tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout);
+      FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
+      fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
+      fflush(output);
     } else {
       need_reply = false;
     }
@@ -181,13 +182,13 @@ static ssize_t tcp_handle_recv(const bool d) {
   } else if (need_reply) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
   }
-  tcp_send_hdr_p[d]->th_flags = TH_ACK;
-  tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
-  tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
   if (need_reply) {
     if (raw_send_len[d] > 0) {
       tcp_interrupted[d] = true;
     }
+    tcp_send_hdr_p[d]->th_flags = TH_ACK;
+    tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
+    tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
     tcp_fill_checksum(d);
     tcp_timeout[d] = 0;
