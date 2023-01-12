@@ -46,7 +46,7 @@ static char *const tcp_send_payload[2] = {
 };
 static int64_t tcp_timeout[2] = {0, 0};
 static tcp_seq tcp_want_seq[2] = {0, 0};
-static FILE *tcp_output_stream[2] = {NULL, NULL};
+static FILE *tcp_output_file[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 static bool tcp_interrupted[2] = {false, false};
 
@@ -166,7 +166,8 @@ static ssize_t tcp_handle_recv(const bool d) {
       return -1;
     }
     if (tcp_recv_len > 0) {
-      fwrite(tcp_recv_payload, 1, tcp_recv_len, tcp_output_stream[d]);
+      fwrite(tcp_recv_payload, 1, tcp_recv_len,
+             tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout);
     } else {
       need_reply = false;
     }
@@ -271,9 +272,20 @@ static char ftp_cmd[FTP_CMD_MAXLEN];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 
+static void ftp_close_file(void) {
+  if (tcp_output_file[1] == NULL) {
+    return;
+  }
+  fclose(tcp_output_file[1]);
+  tcp_output_file[1] = NULL;
+}
+
 static void ftp_handle_reply(const size_t reply_len) {
+  if (reply_len < 3) {
+    return;
+  }
   char *reply_payload = raw_recv_payload + raw_recv_len - reply_len;
-  if (reply_len >= 3 && memcmp(reply_payload, "227", 3) == 0) {
+  if (memcmp(reply_payload, "227", 3) == 0) {
     char *left_paren = strchr(reply_payload, '(');
     if (left_paren == NULL) {
       return;
@@ -311,7 +323,10 @@ static void ftp_handle_reply(const size_t reply_len) {
       return;
     }
     port_dest[1] = (atoi(comma4 + 1) << 8) + atoi(comma5 + 1);
-  } else if (reply_len == 0 && ftp_cmd_len > 0) {
+    tcp_prepare_syn(1);
+  } else if (memcmp(reply_payload, "226", 3) == 0) {
+    tcp_prepare_fin(1);
+    ftp_close_file();
   }
 }
 
@@ -395,7 +410,6 @@ int main(int argc, char **argv) {
   };
 
   srand(time_ns());
-  tcp_output_stream[0] = stdout;
 
   pthread_t input_thread;
   pthread_create(&input_thread, NULL, input_loop, NULL);
@@ -424,6 +438,13 @@ int main(int argc, char **argv) {
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 &&
         tcp_state[0] == TCP_ESTABLISHED && ftp_cmd_len > 0) {
+      if (ftp_cmd[0] == 'L') {
+        ftp_close_file();
+      } else if (ftp_cmd[0] == 'R') {
+        ftp_close_file();
+        ftp_cmd[ftp_cmd_len - 1] = '\0';
+        tcp_output_file[1] = fopen(ftp_cmd, "w");
+      }
       tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
     sleep_ns(1000000);
@@ -437,7 +458,7 @@ int main(int argc, char **argv) {
       raw_recv_len = recv_len;
       const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
       const uint32_t addr_src = ip_recv_hdr_p->saddr;
-      for (int d = 1; d >= 0; d--) {
+      for (int d = 0; d <= 1; d++) {
         if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
             addr_src == addr_dest[d].s_addr) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
