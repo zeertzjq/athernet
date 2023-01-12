@@ -16,7 +16,7 @@
 #define RAW_RECV_MAX 640
 static struct in_addr addr_host;
 static struct in_addr addr_dest[2];
-static uint16_t port_host[2] = {11111, 11110};
+static uint16_t port_host[2] = {0, 0};
 static uint16_t port_dest[2] = {21, 0};
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
@@ -410,6 +410,8 @@ int main(int argc, char **argv) {
   }
 
   srand(time_ns());
+  port_host[0] = rand();
+  port_host[1] = rand();
 
   pthread_t input_thread;
   pthread_create(&input_thread, NULL, input_loop, NULL);
