@@ -153,7 +153,27 @@ static ssize_t tcp_handle_recv(const bool d) {
     } else if (tcp_state[d] != TCP_ESTABLISHED) {
       return -1;
     }
-  } else if (tcp_recv_hdr_p->th_flags & TH_FIN) {
+  } else if (tcp_recv_hdr_p->th_seq == htonl(tcp_want_seq[d])) {
+    if (tcp_state[d] == TCP_FIN_WAIT1) {
+      tcp_state[d] = TCP_FIN_WAIT2;
+    } else if (tcp_state[d] == TCP_CLOSING) {
+      tcp_state[d] = TCP_TIME_WAIT;
+    } else if (tcp_state[d] == TCP_LAST_ACK) {
+      tcp_close(d);
+      return -1;
+    }
+    if (tcp_recv_len > 0) {
+      FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
+      fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
+      fflush(output);
+    } else {
+      need_reply = false;
+    }
+    raw_send_len[d] = 0;
+  } else if (tcp_recv_len == 0) {
+    need_reply = false;
+  }
+  if (tcp_recv_hdr_p->th_flags & TH_FIN) {
     if (tcp_state[d] == TCP_ESTABLISHED) {
       tcp_state[d] = TCP_CLOSE_WAIT;
     } else if (tcp_state[d] == TCP_FIN_WAIT2) {
@@ -165,26 +185,8 @@ static ssize_t tcp_handle_recv(const bool d) {
         tcp_state[d] = TCP_CLOSING;
       }
     }
-  } else if (tcp_recv_hdr_p->th_seq == htonl(tcp_want_seq[d])) {
-    if (tcp_state[d] == TCP_FIN_WAIT1) {
-      tcp_state[d] = TCP_FIN_WAIT2;
-    } else if (tcp_state[d] == TCP_CLOSING) {
-      tcp_state[d] = TCP_TIME_WAIT;
-    } else if (tcp_state[d] == TCP_LAST_ACK) {
-      tcp_close(d);
-      return -1;
-    }
-    if (tcp_recv_len == 0) {
-      need_reply = false;
-    }
-    raw_send_len[d] = 0;
-  } else if (tcp_recv_len == 0) {
-    need_reply = false;
   }
   if (tcp_recv_len > 0) {
-    FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
-    fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
-    fflush(output);
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
   } else if (need_reply) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
