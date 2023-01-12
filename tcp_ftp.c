@@ -408,7 +408,7 @@ int main(int argc, char **argv) {
     } else if (input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
       tcp_prepare_fin(0);
     }
-    for (int d = 0; d <= 1; d++) {
+    for (int d = 1; d >= 0; d--) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
@@ -438,7 +438,7 @@ int main(int argc, char **argv) {
       raw_recv_len = recv_len;
       const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
       const uint32_t addr_src = ip_recv_hdr_p->saddr;
-      for (int d = 0; d <= 1; d++) {
+      for (int d = 1; d >= 0; d--) {
         if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
             addr_src == addr_dest[d].s_addr) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
