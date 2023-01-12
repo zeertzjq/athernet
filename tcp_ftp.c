@@ -43,7 +43,7 @@ static char *const tcp_send_payload[2] = {
     raw_send_payload[0] + sizeof(struct iphdr) + sizeof(struct tcphdr),
     raw_send_payload[1] + sizeof(struct iphdr) + sizeof(struct tcphdr),
 };
-static int64_t tcp_ack_timeout[2] = {0, 0};
+static int64_t tcp_timeout[2] = {0, 0};
 static tcp_seq tcp_want_seq[2] = {0, 0};
 static FILE *tcp_output_stream[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
@@ -96,7 +96,7 @@ static void tcp_prepare_syn(const bool d) {
   };
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
   tcp_fill_checksum(d);
-  tcp_ack_timeout[d] = 0;
+  tcp_timeout[d] = 0;
   tcp_state[d] = TCP_SYN_SENT;
 }
 
@@ -106,14 +106,14 @@ static void tcp_prepare_data(const bool d, const char *const data,
   tcp_send_hdr_p[d]->th_flags = TH_ACK;
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr) + len;
   tcp_fill_checksum(d);
-  tcp_ack_timeout[d] = 0;
+  tcp_timeout[d] = 0;
 }
 
 static void tcp_prepare_fin(const bool d) {
   tcp_send_hdr_p[d]->th_flags = TH_ACK | TH_FIN;
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
   tcp_fill_checksum(d);
-  tcp_ack_timeout[d] = 0;
+  tcp_timeout[d] = 0;
   if (tcp_state[d] == TCP_ESTABLISHED) {
     tcp_state[d] = TCP_FIN_WAIT1;
   } else if (tcp_state[d] == TCP_CLOSE_WAIT) {
@@ -152,16 +152,20 @@ static void tcp_handle_recv(void) {
     } else if (raw_send_len[d] != 0 || tcp_state[d] != TCP_ESTABLISHED) {
       return;
     }
-  } else if (tcp_recv_hdr_p->th_seq != htonl(tcp_want_seq[d])) {
-    return;
   } else if (tcp_recv_hdr_p->th_flags & TH_FIN) {
     if (tcp_state[d] == TCP_ESTABLISHED) {
       tcp_state[d] = TCP_CLOSE_WAIT;
-    } else if (tcp_state[d] == TCP_FIN_WAIT1) {
-      tcp_state[d] = TCP_CLOSING;
     } else if (tcp_state[d] == TCP_FIN_WAIT2) {
       tcp_state[d] = TCP_TIME_WAIT;
+    } else if (tcp_state[d] == TCP_FIN_WAIT1) {
+      if (tcp_recv_hdr_p->th_seq == htonl(tcp_want_seq[d])) {
+        tcp_state[d] = TCP_TIME_WAIT;
+      } else {
+        tcp_state[d] = TCP_CLOSING;
+      }
     }
+  } else if (tcp_recv_hdr_p->th_seq != htonl(tcp_want_seq[d])) {
+    return;
   } else {
     if (tcp_state[d] == TCP_FIN_WAIT1) {
       tcp_state[d] = TCP_FIN_WAIT2;
@@ -188,7 +192,7 @@ static void tcp_handle_recv(void) {
   if (need_reply) {
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
     tcp_fill_checksum(d);
-    tcp_ack_timeout[d] = 0;
+    tcp_timeout[d] = 0;
   }
 }
 
@@ -198,8 +202,7 @@ static bool tcp_need_ack(const bool d) {
 }
 
 static bool tcp_need_retry(const bool d) {
-  return tcp_ack_timeout[d] == 0 ||
-         tcp_need_ack(d) && time_ns() > tcp_ack_timeout[d];
+  return tcp_timeout[d] == 0 || tcp_need_ack(d) && time_ns() > tcp_timeout[d];
 }
 
 static const char *const ftp_cmd_name[] = {
@@ -369,11 +372,14 @@ int main(int argc, char **argv) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        if (tcp_need_ack(d)) {
-          tcp_ack_timeout[d] = time_ns() + 1000000000;
-        } else {
+        tcp_timeout[d] = time_ns() + 1000000000;
+        if (!tcp_need_ack(d)) {
           raw_send_len[d] = 0;
         }
+      } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
+        tcp_prepare_fin(d);
+      } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
+        tcp_state[d] = TCP_CLOSE;
       }
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 &&
