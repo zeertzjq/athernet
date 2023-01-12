@@ -48,8 +48,6 @@ static tcp_seq tcp_want_seq[2] = {0, 0};
 static FILE *tcp_output_stream[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 
-static volatile sig_atomic_t ftp_cmd_len = 0;
-
 static void tcp_fill_checksum(const bool d) {
   tcp_send_hdr_p[d]->th_sum = 0;
   const uint16_t tcp_len = raw_send_len[d] - sizeof(struct iphdr);
@@ -100,6 +98,14 @@ static void tcp_syn_prepare(const bool d) {
   tcp_fill_checksum(d);
   tcp_ack_timeout[d] = 0;
   tcp_state[d] = TCP_SYN_SENT;
+}
+
+static void tcp_data_prepare(const bool d, const char *const data,
+                             const size_t len) {
+  memcpy(tcp_send_payload[d], data, len);
+  raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr) + len;
+  tcp_fill_checksum(d);
+  tcp_ack_timeout[d] = 0;
 }
 
 static void tcp_handle_recv(void) {
@@ -156,9 +162,6 @@ static void tcp_handle_recv(void) {
     if (tcp_recv_len == 0) {
       need_reply = false;
     }
-  }
-  if (!d && raw_send_len[0] > sizeof(struct iphdr) + sizeof(struct tcphdr)) {
-    ftp_cmd_len = 0;
   }
   raw_send_len[d] = 0;
   if (tcp_recv_len != 0) {
@@ -254,6 +257,7 @@ static const char *ftp_parse_get(void) {
 
 #define FTP_CMD_MAXLEN 400
 static char ftp_cmd[FTP_CMD_MAXLEN];
+static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 
 static void *input_loop(void *args) {
@@ -358,11 +362,7 @@ int main(int argc, char **argv) {
       }
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 && ftp_cmd_len > 0) {
-      memcpy(tcp_send_payload[0], ftp_cmd, ftp_cmd_len);
-      raw_send_len[0] =
-          sizeof(struct iphdr) + sizeof(struct tcphdr) + ftp_cmd_len;
-      tcp_fill_checksum(0);
-      tcp_ack_timeout[0] = 0;
+      tcp_data_prepare(0, ftp_cmd, ftp_cmd_len);
     }
     sleep_ns(1000000);
     ssize_t recv_len =
@@ -374,6 +374,10 @@ int main(int argc, char **argv) {
     } else {
       raw_recv_len = recv_len;
       tcp_handle_recv();
+      if (ftp_cmd_len > 0 &&
+          raw_send_len[0] <= sizeof(struct iphdr) + sizeof(struct tcphdr)) {
+        ftp_cmd_len = 0;
+      }
     }
   }
 
