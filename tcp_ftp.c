@@ -267,43 +267,47 @@ static char ftp_cmd[FTP_CMD_MAXLEN];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 
-static void ftp_cmd_ack(const size_t reply_len) {
+static void ftp_handle_reply(const size_t reply_len) {
   char *reply_payload = raw_recv_payload + raw_recv_len - reply_len;
-  if (reply_len >= 3 && memcmp(reply_payload, "227", 3)) {
+  if (reply_len >= 3 && memcmp(reply_payload, "227", 3) == 0) {
     char *left_paren = strchr(reply_payload, '(');
     if (left_paren == NULL) {
       return;
     }
-    char *comma1 = strchr(left_paren, ',');
+    char *comma1 = strchr(left_paren + 1, ',');
     if (comma1 == NULL) {
       return;
     }
-    char *comma2 = strchr(comma1, ',');
+    char *comma2 = strchr(comma1 + 1, ',');
     if (comma2 == NULL) {
       return;
     }
-    char *comma3 = strchr(comma2, ',');
+    char *comma3 = strchr(comma2 + 1, ',');
     if (comma3 == NULL) {
       return;
     }
-    char *comma4 = strchr(comma3, ',');
+    char *comma4 = strchr(comma3 + 1, ',');
     if (comma4 == NULL) {
       return;
     }
-    char *comma5 = strchr(comma4, ',');
+    char *comma5 = strchr(comma4 + 1, ',');
     if (comma5 == NULL) {
       return;
     }
-    char *right_paren = strchr(comma5, '(');
+    char *right_paren = strchr(comma5 + 1, '(');
     if (right_paren == NULL) {
       return;
     }
+    *comma1 = '.';
+    *comma2 = '.';
+    *comma3 = '.';
     *comma4 = '\0';
     if (inet_pton(AF_INET, left_paren + 1, &addr_dest[1]) == 0) {
       fprintf(stderr, "Invalid IP address: %s\n", left_paren + 1);
       return;
     }
     port_dest[1] = (atoi(comma4 + 1) << 8) + atoi(comma5 + 1);
+  } else if (reply_len == 0 && ftp_cmd_len > 0) {
   }
 }
 
@@ -433,8 +437,8 @@ int main(int argc, char **argv) {
         if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
             addr_src == addr_dest[d].s_addr) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
-          if (d == 0 && tcp_recv_len >= 0 && ftp_cmd_len > 0) {
-            ftp_cmd_ack(tcp_recv_len);
+          if (d == 0 && tcp_recv_len >= 0) {
+            ftp_handle_reply(tcp_recv_len);
             ftp_cmd_len = 0;
           }
           break;
