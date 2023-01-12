@@ -428,16 +428,14 @@ int main(int argc, char **argv) {
       if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        if (tcp_need_ack(d)) {
-          tcp_timeout[d] = time_ns() + 1000000000;
-        } else {
+        tcp_timeout[d] = time_ns() + 1000000000;
+        if (!tcp_need_ack(d)) {
           raw_send_len[d] = 0;
         }
         break;
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
-      }
-      if (tcp_state[d] == TCP_TIME_WAIT) {
+      } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
         tcp_state[d] = TCP_CLOSE;
       }
     }
