@@ -48,6 +48,7 @@ static int64_t tcp_timeout[2] = {0, 0};
 static tcp_seq tcp_want_seq[2] = {0, 0};
 static FILE *tcp_output_stream[2] = {NULL, NULL};
 static int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
+static bool tcp_interrupted[2] = {false, false};
 
 static void tcp_fill_checksum(const bool d) {
   tcp_send_hdr_p[d]->th_sum = 0;
@@ -139,7 +140,8 @@ static ssize_t tcp_handle_recv(const bool d) {
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
       tcp_state[d] = TCP_ESTABLISHED;
-    } else if (raw_send_len[d] != 0 || tcp_state[d] != TCP_ESTABLISHED) {
+      raw_send_len[d] = 0;
+    } else if (tcp_state[d] != TCP_ESTABLISHED) {
       return -1;
     }
   } else if (tcp_recv_hdr_p->th_flags & TH_FIN) {
@@ -154,9 +156,7 @@ static ssize_t tcp_handle_recv(const bool d) {
         tcp_state[d] = TCP_CLOSING;
       }
     }
-  } else if (tcp_recv_hdr_p->th_seq != htonl(tcp_want_seq[d])) {
-    return -1;
-  } else {
+  } else if (tcp_recv_hdr_p->th_seq == htonl(tcp_want_seq[d])) {
     if (tcp_state[d] == TCP_FIN_WAIT1) {
       tcp_state[d] = TCP_FIN_WAIT2;
     } else if (tcp_state[d] == TCP_CLOSING) {
@@ -168,10 +168,12 @@ static ssize_t tcp_handle_recv(const bool d) {
     if (tcp_recv_len == 0) {
       need_reply = false;
     }
+    raw_send_len[d] = 0;
   }
-  raw_send_len[d] = 0;
   if (tcp_recv_len != 0) {
-    fwrite(tcp_recv_payload, 1, tcp_recv_len, tcp_output_stream[d]);
+    if (raw_send_len[d] == 0) {
+      fwrite(tcp_recv_payload, 1, tcp_recv_len, tcp_output_stream[d]);
+    }
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len;
   } else if (need_reply) {
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + 1;
@@ -180,6 +182,9 @@ static ssize_t tcp_handle_recv(const bool d) {
   tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
   tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
   if (need_reply) {
+    if (raw_send_len[d] != 0) {
+      tcp_interrupted[d] = true;
+    }
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
     tcp_fill_checksum(d);
     tcp_timeout[d] = 0;
@@ -439,8 +444,11 @@ int main(int argc, char **argv) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
           if (d == 0 && tcp_recv_len >= 0) {
             ftp_handle_reply(tcp_recv_len);
-            ftp_cmd_len = 0;
+            if (!tcp_interrupted[d]) {
+              ftp_cmd_len = 0;
+            }
           }
+          tcp_interrupted[d] = false;
           break;
         }
       }
