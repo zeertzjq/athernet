@@ -124,10 +124,18 @@ static void tcp_prepare_fin(const bool d) {
   }
 }
 
+static void tcp_close(const bool d) {
+  if (tcp_output_file[d] != NULL) {
+    fclose(tcp_output_file[d]);
+  }
+  tcp_output_file[d] = NULL;
+  raw_send_len[d] = 0;
+  tcp_state[d] = TCP_CLOSE;
+}
+
 static ssize_t tcp_handle_recv(const bool d) {
   if (tcp_recv_hdr_p->th_flags & TH_RST) {
-    raw_send_len[d] = 0;
-    tcp_state[d] = TCP_CLOSE;
+    tcp_close(d);
     return -1;
   }
   if (!(tcp_recv_hdr_p->th_flags & TH_ACK)) {
@@ -138,6 +146,9 @@ static ssize_t tcp_handle_recv(const bool d) {
   const size_t tcp_recv_len =
       raw_recv_len - sizeof(struct iphdr) - tcp_recv_hdr_len;
   bool need_reply = true;
+  if (raw_recv_len == 94) {
+    fprintf(stderr, "!!!94!!!");
+  }
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
       tcp_state[d] = TCP_ESTABLISHED;
@@ -163,8 +174,7 @@ static ssize_t tcp_handle_recv(const bool d) {
     } else if (tcp_state[d] == TCP_CLOSING) {
       tcp_state[d] = TCP_TIME_WAIT;
     } else if (tcp_state[d] == TCP_LAST_ACK) {
-      raw_send_len[d] = 0;
-      tcp_state[d] = TCP_CLOSE;
+      tcp_close(d);
       return -1;
     }
     if (tcp_recv_len > 0) {
@@ -276,6 +286,7 @@ static const char *ftp_parse_get(void) {
 static char ftp_cmd[FTP_CMD_MAXLEN];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
+static bool ftp_file_end = false;
 
 static void ftp_close_file(void) {
   if (tcp_output_file[1] == NULL) {
@@ -330,9 +341,10 @@ static void ftp_handle_reply(const size_t reply_len) {
     }
     port_dest[1] = (atoi(comma4 + 1) << 8) + atoi(comma5 + 1);
     tcp_prepare_syn(1);
-  } else if (memcmp(reply_payload, "226", 3) == 0) {
+  } else if (tcp_state[1] == TCP_ESTABLISHED &&
+             memcmp(reply_payload, "226", 3) == 0) {
     tcp_prepare_fin(1);
-    ftp_close_file();
+    fprintf(stderr, "!!!END!!!");
   }
 }
 
@@ -444,8 +456,7 @@ int main(int argc, char **argv) {
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
       } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
-        raw_send_len[d] = 0;
-        tcp_state[d] = TCP_CLOSE;
+        tcp_close(d);
       }
     }
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0 &&
