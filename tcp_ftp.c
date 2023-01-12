@@ -89,7 +89,7 @@ static void tcp_prepare_syn(const bool d) {
   };
   *tcp_send_hdr_p[d] = (struct tcphdr){
       .th_sport = htons(d ? 11110 : 11111),
-      .th_dport = htons(d ? 20 : 21),
+      .th_dport = htons(port_dest[d]),
       .th_seq = htonl(rand()),
       .th_off = 5,
       .th_flags = TH_SYN,
@@ -122,37 +122,25 @@ static void tcp_prepare_fin(const bool d) {
   }
 }
 
-static void tcp_handle_recv(void) {
-  const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
-  const uint32_t addr_src = ip_recv_hdr_p->saddr;
-  int d;
-  for (d = 0; d <= 1; d++) {
-    if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
-        addr_src == addr_dest[d].s_addr) {
-      break;
-    }
-  }
-  if (d > 1) {
-    return;
-  }
+static ssize_t tcp_handle_recv(const bool d) {
   if (tcp_recv_hdr_p->th_flags & TH_RST) {
     raw_send_len[d] = 0;
     tcp_state[d] = TCP_CLOSE;
-    return;
+    return -1;
   }
   if (!(tcp_recv_hdr_p->th_flags & TH_ACK)) {
-    return;
+    return -1;
   }
-  const size_t tcp_recv_header_len = (tcp_recv_hdr_p->th_off << 2);
-  const char *tcp_recv_payload = ip_recv_payload + tcp_recv_header_len;
+  const size_t tcp_recv_hdr_len = (tcp_recv_hdr_p->th_off << 2);
+  const char *tcp_recv_payload = ip_recv_payload + tcp_recv_hdr_len;
   const size_t tcp_recv_len =
-      raw_recv_len - sizeof(struct iphdr) - tcp_recv_header_len;
+      raw_recv_len - sizeof(struct iphdr) - tcp_recv_hdr_len;
   bool need_reply = true;
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
       tcp_state[d] = TCP_ESTABLISHED;
     } else if (raw_send_len[d] != 0 || tcp_state[d] != TCP_ESTABLISHED) {
-      return;
+      return -1;
     }
   } else if (tcp_recv_hdr_p->th_flags & TH_FIN) {
     if (tcp_state[d] == TCP_ESTABLISHED) {
@@ -167,7 +155,7 @@ static void tcp_handle_recv(void) {
       }
     }
   } else if (tcp_recv_hdr_p->th_seq != htonl(tcp_want_seq[d])) {
-    return;
+    return -1;
   } else {
     if (tcp_state[d] == TCP_FIN_WAIT1) {
       tcp_state[d] = TCP_FIN_WAIT2;
@@ -175,7 +163,7 @@ static void tcp_handle_recv(void) {
       tcp_state[d] = TCP_TIME_WAIT;
     } else if (tcp_state[d] == TCP_LAST_ACK) {
       tcp_state[d] = TCP_CLOSE;
-      return;
+      return -1;
     }
     if (tcp_recv_len == 0) {
       need_reply = false;
@@ -196,6 +184,7 @@ static void tcp_handle_recv(void) {
     tcp_fill_checksum(d);
     tcp_timeout[d] = 0;
   }
+  return tcp_recv_len;
 }
 
 static bool tcp_need_ack(const bool d) {
@@ -277,6 +266,46 @@ static const char *ftp_parse_get(void) {
 static char ftp_cmd[FTP_CMD_MAXLEN];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
+
+static void ftp_cmd_ack(const size_t reply_len) {
+  char *reply_payload = raw_recv_payload + raw_recv_len - reply_len;
+  if (reply_len >= 3 && memcmp(reply_payload, "227", 3)) {
+    char *left_paren = strchr(reply_payload, '(');
+    if (left_paren == NULL) {
+      return;
+    }
+    char *comma1 = strchr(left_paren, ',');
+    if (comma1 == NULL) {
+      return;
+    }
+    char *comma2 = strchr(comma1, ',');
+    if (comma2 == NULL) {
+      return;
+    }
+    char *comma3 = strchr(comma2, ',');
+    if (comma3 == NULL) {
+      return;
+    }
+    char *comma4 = strchr(comma3, ',');
+    if (comma4 == NULL) {
+      return;
+    }
+    char *comma5 = strchr(comma4, ',');
+    if (comma5 == NULL) {
+      return;
+    }
+    char *right_paren = strchr(comma5, '(');
+    if (right_paren == NULL) {
+      return;
+    }
+    *comma4 = '\0';
+    if (inet_pton(AF_INET, left_paren + 1, &addr_dest[1]) == 0) {
+      fprintf(stderr, "Invalid IP address: %s\n", left_paren + 1);
+      return;
+    }
+    port_dest[1] = (atoi(comma4 + 1) << 8) + atoi(comma5 + 1);
+  }
+}
 
 static void *input_loop(void *args) {
   bool past_cmd = false;
@@ -378,6 +407,7 @@ int main(int argc, char **argv) {
         if (!tcp_need_ack(d)) {
           raw_send_len[d] = 0;
         }
+        break;
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
       } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
@@ -397,10 +427,18 @@ int main(int argc, char **argv) {
       }
     } else {
       raw_recv_len = recv_len;
-      tcp_handle_recv();
-      if (ftp_cmd_len > 0 &&
-          raw_send_len[0] <= sizeof(struct iphdr) + sizeof(struct tcphdr)) {
-        ftp_cmd_len = 0;
+      const uint16_t port_src = ntohs(tcp_recv_hdr_p->th_sport);
+      const uint32_t addr_src = ip_recv_hdr_p->saddr;
+      for (int d = 0; d <= 1; d++) {
+        if (tcp_state[d] != TCP_CLOSE && port_src == port_dest[d] &&
+            addr_src == addr_dest[d].s_addr) {
+          ssize_t tcp_recv_len = tcp_handle_recv(d);
+          if (d == 0 && tcp_recv_len >= 0 && ftp_cmd_len > 0) {
+            ftp_cmd_ack(tcp_recv_len);
+            ftp_cmd_len = 0;
+          }
+          break;
+        }
       }
     }
   }
