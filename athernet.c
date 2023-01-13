@@ -298,5 +298,9 @@ int main(int argc, char **argv) {
   playback_stop();
   pthread_join(recv_thread, NULL);
 
+  if (node_type == NODE_FTP) {
+    pthread_join(ftp_input_thread, NULL);
+  }
+
   return EXIT_SUCCESS;
 }
