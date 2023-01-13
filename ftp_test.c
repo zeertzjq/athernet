@@ -98,11 +98,7 @@ int main(int argc, char **argv) {
     } else if (ip_recv_hdr_p->ihl == 5) {
       raw_recv_len = recv_len;
       for (int d = 1; d >= 0; d--) {
-        if (tcp_state[d] != TCP_CLOSE &&
-            ntohs(tcp_recv_hdr_p->th_sport) == port_dest[d] &&
-            ip_recv_hdr_p->saddr == addr_dest[d].s_addr &&
-            ntohs(tcp_recv_hdr_p->th_dport) == port_host[d] &&
-            ip_recv_hdr_p->daddr == addr_host.s_addr) {
+        if (tcp_recv_check(d)) {
           ssize_t tcp_recv_len = tcp_handle_recv(d);
           if (d == 0 && tcp_recv_len >= 0) {
             ftp_handle_reply(tcp_recv_len);

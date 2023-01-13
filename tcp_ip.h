@@ -34,6 +34,7 @@ void tcp_prepare_syn(bool d);
 void tcp_prepare_data(bool d, const char *data, size_t len);
 void tcp_prepare_fin(bool d);
 void tcp_close(bool d);
-ssize_t tcp_handle_recv(bool d);
 bool tcp_need_ack(bool d);
 bool tcp_need_retry(bool d);
+bool tcp_recv_check(bool d);
+ssize_t tcp_handle_recv(bool d);

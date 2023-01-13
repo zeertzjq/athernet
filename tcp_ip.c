@@ -129,6 +129,23 @@ void tcp_close(const bool d) {
   tcp_state[d] = TCP_CLOSE;
 }
 
+bool tcp_need_ack(const bool d) {
+  return raw_send_len[d] > sizeof(struct iphdr) + sizeof(struct tcphdr) ||
+         tcp_send_hdr_p[d]->th_flags != TH_ACK;
+}
+
+bool tcp_need_retry(const bool d) {
+  return tcp_timeout[d] == 0 || tcp_need_ack(d) && time_ns() > tcp_timeout[d];
+}
+
+bool tcp_recv_check(const bool d) {
+  return tcp_state[d] != TCP_CLOSE &&
+         ntohs(tcp_recv_hdr_p->th_sport) == port_dest[d] &&
+         ip_recv_hdr_p->saddr == addr_dest[d].s_addr &&
+         ntohs(tcp_recv_hdr_p->th_dport) == port_host[d] &&
+         ip_recv_hdr_p->daddr == addr_host.s_addr;
+}
+
 ssize_t tcp_handle_recv(const bool d) {
   if (tcp_recv_hdr_p->th_flags & TH_RST) {
     tcp_close(d);
@@ -199,13 +216,4 @@ ssize_t tcp_handle_recv(const bool d) {
     tcp_timeout[d] = 0;
   }
   return tcp_recv_len;
-}
-
-bool tcp_need_ack(const bool d) {
-  return raw_send_len[d] > sizeof(struct iphdr) + sizeof(struct tcphdr) ||
-         tcp_send_hdr_p[d]->th_flags != TH_ACK;
-}
-
-bool tcp_need_retry(const bool d) {
-  return tcp_timeout[d] == 0 || tcp_need_ack(d) && time_ns() > tcp_timeout[d];
 }
