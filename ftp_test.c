@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
     } else if (ftp_input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
       tcp_prepare_fin(0);
     }
-    for (int d = 1; d >= 0; d--) {
+    for (int d = 0; d <= 1; d++) {
       if (tcp_state[d] == TCP_CLOSE) {
         continue;
       }

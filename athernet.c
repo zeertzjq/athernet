@@ -58,7 +58,7 @@ static void mac_send_prepare(void) {
       tcp_prepare_fin(0);
     }
     int d;
-    for (d = 1; d >= 0; d--) {
+    for (d = 0; d <= 1; d++) {
       if (tcp_state[d] == TCP_CLOSE) {
         continue;
       }
@@ -74,7 +74,7 @@ static void mac_send_prepare(void) {
     if (raw_send_len[0] == 0 && raw_send_len[1] == 0) {
       ftp_prepare_cmd();
     }
-    if (d < 0) {
+    if (d > 1) {
       return;
     }
   } else if (node_type == NODE_NAT) {
@@ -272,12 +272,12 @@ int main(int argc, char **argv) {
       const uint16_t header = compose_u16(mac_recv_bits);
       if ((header & 0xFFF0) == recv_data_header) {
         const int seq = header & 0xF;
-        mac_send_ack(seq);
         static int recv_seq = 0;
         if (seq == recv_seq) {
           mac_handle_recv();
           recv_seq = (recv_seq + 1) & 0xF;
         }
+        mac_send_ack(seq);
       } else if (mac_ack_want != 0 && header == mac_ack_want) {
         mac_send_seq = (mac_send_seq + 1) & 0xF;
         mac_ack_want = 0;

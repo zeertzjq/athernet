@@ -170,6 +170,7 @@ ssize_t tcp_handle_recv(const bool d) {
   const size_t tcp_recv_len =
       raw_recv_len - sizeof(struct iphdr) - tcp_recv_hdr_len;
   bool need_reply = true;
+  bool is_reply = false;
   uint16_t seq_extra = 0;
   if (tcp_recv_hdr_p->th_flags & TH_SYN) {
     if (tcp_state[d] == TCP_SYN_SENT) {
@@ -188,6 +189,7 @@ ssize_t tcp_handle_recv(const bool d) {
       tcp_close(d);
       return -1;
     }
+    is_reply = true;
     if (tcp_recv_len > 0) {
       FILE *output = tcp_output_file[d] != NULL ? tcp_output_file[d] : stdout;
       fwrite(tcp_recv_payload, 1, tcp_recv_len, output);
@@ -226,5 +228,5 @@ ssize_t tcp_handle_recv(const bool d) {
     tcp_fill_checksum(raw_send_payload[d], raw_send_len[d]);
     tcp_timeout[d] = 0;
   }
-  return tcp_recv_len;
+  return is_reply ? tcp_recv_len : -1;
 }
