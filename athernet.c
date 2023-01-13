@@ -146,9 +146,8 @@ static void mac_handle_recv(void) {
       }
     }
   } else if (node_type == NODE_NAT) {
-    fprintf(stderr, "%zu\n", raw_recv_len);
     if (ip_recv_hdr_p->saddr != addr_host.s_addr ||
-        ip_recv_hdr_p->protocol == IPPROTO_TCP) {
+        ip_recv_hdr_p->protocol != IPPROTO_TCP) {
       return;
     }
     ip_recv_hdr_p->saddr = addr_nat.s_addr;
