@@ -268,9 +268,8 @@ int main(int argc, char **argv) {
 
     int64_t poll_timeout = 1000000;
     if (phy_poll_frame(&poll_timeout)) {
-      bool bits[PHY_PAYLOAD_MAX];
-      mac_recv_bits_len = phy_receive_frame(bits);
-      const uint16_t header = compose_u16(bits);
+      mac_recv_bits_len = phy_receive_frame(mac_recv_bits);
+      const uint16_t header = compose_u16(mac_recv_bits);
       if ((header & 0xFFF0) == recv_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
