@@ -130,7 +130,7 @@ static void mac_handle_recv(void) {
   const bool *const mac_payload_bits = mac_recv_bits + MAC_HEADER_LEN;
   const size_t mac_payload_bits_len = mac_recv_bits_len - MAC_HEADER_LEN;
   for (size_t i = 0; i < mac_payload_bits_len; i += 8) {
-    raw_recv_payload[i / 8] = compose_u8(mac_payload_bits + MAC_HEADER_LEN + i);
+    raw_recv_payload[i / 8] = compose_u8(mac_payload_bits + i);
   }
   raw_recv_len = mac_payload_bits_len / 8;
 
