@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PHY_PAYLOAD_MAX 1000
+#define PHY_PAYLOAD_MAX 1936
 
 extern int volume;
 extern volatile sig_atomic_t phy_received_len;

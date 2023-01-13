@@ -18,8 +18,8 @@ struct in_addr addr_host;
 struct in_addr addr_dest[2];
 uint16_t port_host[2] = {0, 0};
 uint16_t port_dest[2] = {21, 0};
-char raw_send_payload[2][RAW_SEND_MAX];
-char raw_recv_payload[RAW_RECV_MAX];
+char raw_send_payload[2][RAW_PAYLOAD_MAX];
+char raw_recv_payload[RAW_PAYLOAD_MAX];
 size_t raw_send_len[2] = {0, 0};
 size_t raw_recv_len = 0;
 struct iphdr *const ip_send_hdr_p[2] = {
@@ -49,16 +49,19 @@ int tcp_state[2] = {TCP_CLOSE, TCP_CLOSE};
 
 static tcp_seq tcp_want_seq[2] = {0, 0};
 
-void tcp_fill_checksum(const bool d) {
-  tcp_send_hdr_p[d]->th_sum = 0;
-  const uint16_t tcp_len = raw_send_len[d] - sizeof(struct iphdr);
+void tcp_fill_checksum(char *raw_payload, const size_t raw_len) {
+  struct iphdr *const ip_hdr_p = (struct iphdr *)raw_payload;
+  char *const ip_payload = raw_payload + sizeof(struct iphdr);
+  struct tcphdr *const tcp_hdr_p = (struct tcphdr *)ip_payload;
+  tcp_hdr_p->th_sum = 0;
+  const uint16_t tcp_len = raw_len - sizeof(struct iphdr);
   struct {
     uint32_t saddr, daddr;
     uint8_t zeros, protocol;
     uint16_t tcp_len;
   } pseudo_hdr = {
-      .saddr = ip_send_hdr_p[d]->saddr,
-      .daddr = ip_send_hdr_p[d]->daddr,
+      .saddr = ip_hdr_p->saddr,
+      .daddr = ip_hdr_p->daddr,
       .protocol = IPPROTO_TCP,
       .tcp_len = htons(tcp_len),
   };
@@ -67,15 +70,15 @@ void tcp_fill_checksum(const bool d) {
     sum += ((uint16_t *)&pseudo_hdr)[i];
   }
   for (size_t i = 0; i < tcp_len / 2; i++) {
-    sum += ((uint16_t *)ip_send_payload[d])[i];
+    sum += ((uint16_t *)ip_payload)[i];
   }
   if (tcp_len & 1) {
-    sum += ((uint8_t *)ip_send_payload[d])[tcp_len - 1];
+    sum += ((uint8_t *)ip_payload)[tcp_len - 1];
   }
   while (sum >> 16) {
     sum = (sum & 0xFFFF) + (sum >> 16);
   }
-  tcp_send_hdr_p[d]->th_sum = ~sum;
+  tcp_hdr_p->th_sum = ~sum;
 }
 
 void tcp_prepare_syn(const bool d) {
@@ -93,10 +96,10 @@ void tcp_prepare_syn(const bool d) {
       .th_seq = htonl(rand()),
       .th_off = 5,
       .th_flags = TH_SYN,
-      .th_win = htons(RAW_RECV_MAX - 80),
+      .th_win = htons(RAW_PAYLOAD_MAX - 80),
   };
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
-  tcp_fill_checksum(d);
+  tcp_fill_checksum(raw_send_payload[d], raw_send_len[d]);
   tcp_timeout[d] = 0;
   tcp_state[d] = TCP_SYN_SENT;
 }
@@ -105,14 +108,14 @@ void tcp_prepare_data(const bool d, const char *const data, const size_t len) {
   memcpy(tcp_send_payload[d], data, len);
   tcp_send_hdr_p[d]->th_flags = TH_ACK;
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr) + len;
-  tcp_fill_checksum(d);
+  tcp_fill_checksum(raw_send_payload[d], raw_send_len[d]);
   tcp_timeout[d] = 0;
 }
 
 void tcp_prepare_fin(const bool d) {
   tcp_send_hdr_p[d]->th_flags = TH_ACK | TH_FIN;
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
-  tcp_fill_checksum(d);
+  tcp_fill_checksum(raw_send_payload[d], raw_send_len[d]);
   tcp_timeout[d] = 0;
   if (tcp_state[d] == TCP_ESTABLISHED) {
     tcp_state[d] = TCP_FIN_WAIT1;
@@ -130,13 +133,20 @@ void tcp_close(const bool d) {
   tcp_state[d] = TCP_CLOSE;
 }
 
-bool tcp_need_ack(const bool d) {
+static bool tcp_need_ack(const bool d) {
   return raw_send_len[d] > sizeof(struct iphdr) + sizeof(struct tcphdr) ||
          tcp_send_hdr_p[d]->th_flags != TH_ACK;
 }
 
 bool tcp_need_retry(const bool d) {
   return tcp_timeout[d] == 0 || tcp_need_ack(d) && time_ns() > tcp_timeout[d];
+}
+
+void tcp_after_send(const bool d) {
+  tcp_timeout[d] = time_ns() + 2000000000;
+  if (!tcp_need_ack(d)) {
+    raw_send_len[d] = 0;
+  }
 }
 
 bool tcp_recv_check(const bool d) {
@@ -213,7 +223,7 @@ ssize_t tcp_handle_recv(const bool d) {
     tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
     tcp_send_hdr_p[d]->th_flags = TH_ACK;
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
-    tcp_fill_checksum(d);
+    tcp_fill_checksum(raw_send_payload[d], raw_send_len[d]);
     tcp_timeout[d] = 0;
   }
   return tcp_recv_len;

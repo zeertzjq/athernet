@@ -12,6 +12,9 @@
 #include "ftp.h"
 #include "tcp_ip.h"
 
+static int ip_send_fd;
+static int ip_recv_fd;
+
 int main(int argc, char **argv) {
   if (argc <= 2) {
     fprintf(stderr, "Not enough arguments\n");
@@ -73,10 +76,7 @@ int main(int argc, char **argv) {
         };
         sendto(ip_send_fd, raw_send_payload[d], raw_send_len[d], 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest));
-        tcp_timeout[d] = time_ns() + 2000000000;
-        if (!tcp_need_ack(d)) {
-          raw_send_len[d] = 0;
-        }
+        tcp_after_send(d);
         break;
       } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
         tcp_prepare_fin(d);
@@ -84,13 +84,12 @@ int main(int argc, char **argv) {
         tcp_close(d);
       }
     }
-    if (raw_send_len[0] == 0 && raw_send_len[1] == 0 &&
-        tcp_state[0] == TCP_ESTABLISHED) {
+    if (raw_send_len[0] == 0 && raw_send_len[1] == 0) {
       ftp_prepare_cmd();
     }
     sleep_ns(1000000);
-    ssize_t recv_len =
-        recvfrom(ip_recv_fd, S_LEN(raw_recv_payload), MSG_DONTWAIT, NULL, NULL);
+    ssize_t recv_len = recvfrom(ip_recv_fd, raw_recv_payload, RAW_PAYLOAD_MAX,
+                                MSG_DONTWAIT, NULL, NULL);
     if (recv_len < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
         perror(NULL);

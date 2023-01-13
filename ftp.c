@@ -79,8 +79,8 @@ static const char *ftp_parse_get(void) {
   return NULL;
 }
 
-#define FTP_CMD_MAXLEN (RAW_SEND_MAX - 50)
-static char ftp_cmd[RAW_SEND_MAX - 40];
+#define FTP_CMD_MAXLEN (RAW_PAYLOAD_MAX - 50)
+static char ftp_cmd[RAW_PAYLOAD_MAX - 40];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 
 void *ftp_input_loop(void *args) {
@@ -135,7 +135,7 @@ static void ftp_close_file(void) {
 }
 
 void ftp_prepare_cmd(void) {
-  if (ftp_cmd_len == 0) {
+  if (tcp_state[0] != TCP_ESTABLISHED || ftp_cmd_len == 0) {
     return;
   }
   if (ftp_cmd[0] == 'L') {

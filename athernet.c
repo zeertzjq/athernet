@@ -2,7 +2,7 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-#include <netinet/udp.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,12 +14,14 @@
 
 #include "backend.h"
 #include "common.h"
+#include "ftp.h"
 #include "physical.h"
+#include "tcp_ip.h"
 
 static enum {
-  NODE_UDP,
+  NODE_FTP,
   NODE_NAT,
-} node_type = NODE_UDP;
+} node_type = NODE_FTP;
 
 #define MAC_HEADER_LEN 16
 #define MAC_HEADER(dest, src, type, seq)                                       \
@@ -33,89 +35,82 @@ enum {
   FRAME_ACK = 1,
 };
 
-static bool mac_send = false;
-static bool mac_recv = false;
-
+static bool mac_send_d = false;
 static int mac_send_seq = 0;
-static char raw_send_payload[PHY_PAYLOAD_MAX / 8];
 static bool mac_send_bits[PHY_PAYLOAD_MAX];
+static bool mac_recv_bits[PHY_PAYLOAD_MAX];
 static size_t mac_send_bits_len = 0;
+static size_t mac_recv_bits_len = 0;
 static uint16_t mac_ack_want = 0;
 static int64_t mac_ack_timeout = 0;
 
-static struct in_addr addr_host;
-static struct in_addr addr_dest;
-static int port_dest = 0;
+static struct in_addr addr_nat;
+static uint16_t port_nat[2];
 
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
 
 static void mac_send_prepare(void) {
-  struct iphdr *ip_hdr_p = (struct iphdr *)raw_send_payload;
-  char *ip_payload = raw_send_payload + sizeof(struct iphdr);
-  size_t raw_payload_len = 0;
-
-  if (node_type == NODE_UDP) {
-    *ip_hdr_p = (struct iphdr){
-        .ihl = 5,
-        .version = 4,
-        .ttl = 255,
-        .protocol = IPPROTO_UDP,
-        .saddr = addr_host.s_addr,
-        .daddr = addr_dest.s_addr,
-    };
-    struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-    char *udp_payload = ip_payload + sizeof(struct udphdr);
-    if (fgets(udp_payload,
-              sizeof(raw_send_payload) - (udp_payload - raw_send_payload),
-              stdin) == NULL) {
-      mac_send = false;
+  if (node_type == NODE_FTP) {
+    if (!ftp_input_stopped && tcp_state[0] == TCP_CLOSE) {
+      tcp_prepare_syn(0);
+    } else if (ftp_input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
+      tcp_prepare_fin(0);
+    }
+    int d;
+    for (d = 1; d >= 0; d--) {
+      if (tcp_state[d] == TCP_CLOSE) {
+        continue;
+      }
+      if (raw_send_len[d] > 0 && tcp_need_retry(d)) {
+        mac_send_d = d;
+        break;
+      } else if (raw_send_len[d] == 0 && tcp_state[d] == TCP_CLOSE_WAIT) {
+        tcp_prepare_fin(d);
+      } else if (tcp_state[d] == TCP_TIME_WAIT && time_ns() > tcp_timeout[d]) {
+        tcp_close(d);
+      }
+    }
+    if (raw_send_len[0] == 0 && raw_send_len[1] == 0) {
+      ftp_prepare_cmd();
+    }
+    if (d < 0) {
       return;
     }
-    size_t udp_payload_len = strlen(udp_payload);
-    if (udp_payload[udp_payload_len - 1] == '\n') {
-      udp_payload[--udp_payload_len] = '\0';
-    }
-    size_t ip_payload_len = (udp_payload - ip_payload) + udp_payload_len;
-    *udp_hdr_p = (struct udphdr){
-        .uh_sport = htons(11111),
-        .uh_dport = htons(port_dest),
-        .uh_ulen = htons(ip_payload_len),
-        .uh_sum = 0,
-    };
-    raw_payload_len = (ip_payload - raw_send_payload) + ip_payload_len;
   } else if (node_type == NODE_NAT) {
-    ssize_t len =
-        recvfrom(ip_recv_fd, S_LEN(raw_send_payload), MSG_DONTWAIT, NULL, NULL);
-    if (len < 0) {
+    ssize_t raw_len = recvfrom(ip_recv_fd, raw_send_payload[mac_send_d],
+                               RAW_PAYLOAD_MAX, MSG_DONTWAIT, NULL, NULL);
+    if (raw_len < 0) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
         perror(NULL);
       }
       return;
     }
-    if (ip_hdr_p->ihl != 5) {
+    if (ip_send_hdr_p[mac_send_d]->ihl != 5 ||
+        ip_send_hdr_p[mac_send_d]->protocol != IPPROTO_TCP) {
       return;
     }
-    size_t ip_payload_len = len - sizeof(struct iphdr);
-    ip_hdr_p->daddr = addr_host.s_addr;
-    if (ip_hdr_p->protocol == IPPROTO_UDP) {
-      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      if (udp_hdr_p->uh_dport != htons(22222)) {
-        return;
-      }
-      udp_hdr_p->uh_dport = htons(11111);
+    ip_send_hdr_p[mac_send_d]->daddr = addr_host.s_addr;
+    if (tcp_recv_hdr_p->th_sport == htons(port_nat[0])) {
+      tcp_recv_hdr_p->th_sport = htons(port_host[0]);
+    } else if (tcp_recv_hdr_p->th_sport == htons(port_nat[1])) {
+      tcp_recv_hdr_p->th_sport = htons(port_host[1]);
+    } else {
+      return;
     }
-    raw_payload_len = len;
+    raw_send_len[mac_send_d] = raw_len;
+    tcp_fill_checksum(raw_recv_payload, raw_send_len[mac_send_d]);
   }
-  ip_hdr_p->tot_len = raw_payload_len;
+  ip_send_hdr_p[mac_send_d]->tot_len = raw_send_len[mac_send_d];
 
   const uint16_t data_header =
       MAC_HEADER(mac_other, mac_self, FRAME_DATA, mac_send_seq);
   decompose_u16(data_header, mac_send_bits);
-  for (size_t i = 0; i < raw_payload_len; i++) {
-    decompose_u8(raw_send_payload[i], mac_send_bits + MAC_HEADER_LEN + i * 8);
+  for (size_t i = 0; i < raw_send_len[mac_send_d]; i++) {
+    decompose_u8(raw_send_payload[mac_send_d][i],
+                 mac_send_bits + MAC_HEADER_LEN + i * 8);
   }
-  mac_send_bits_len = MAC_HEADER_LEN + raw_payload_len * 8;
+  mac_send_bits_len = MAC_HEADER_LEN + raw_send_len[mac_send_d] * 8;
   mac_ack_want = MAC_HEADER(mac_self, mac_other, FRAME_ACK, mac_send_seq);
 }
 
@@ -131,48 +126,45 @@ static void mac_send_ack(const int seq) {
   phy_transmit_frame(ack_bits, MAC_HEADER_LEN);
 }
 
-static void mac_handle_recv(const bool *const bits, const size_t len) {
-  char recv_raw[PHY_PAYLOAD_MAX / 8] = {0};
-  for (size_t i = 0; i < len; i += 8) {
-    recv_raw[i / 8] = compose_u8(bits + i);
+static void mac_handle_recv(void) {
+  const bool *const mac_payload_bits = mac_recv_bits + MAC_HEADER_LEN;
+  const size_t mac_payload_bits_len = mac_recv_bits_len - MAC_HEADER_LEN;
+  for (size_t i = 0; i < mac_payload_bits_len; i += 8) {
+    raw_recv_payload[i / 8] = compose_u8(mac_payload_bits + MAC_HEADER_LEN + i);
   }
-  size_t raw_payload_len = len / 8;
+  raw_recv_len = mac_recv_bits_len / 8;
 
-  struct iphdr *ip_hdr_p = (struct iphdr *)recv_raw;
-  struct in_addr addr_src = {
-      .s_addr = ip_hdr_p->saddr,
-  };
-  char addr[INET_ADDRSTRLEN] = {0};
-  if (inet_ntop(AF_INET, &addr_src, addr, sizeof(addr)) == NULL) {
-    perror(NULL);
-  }
-  char *ip_payload = recv_raw + sizeof(struct iphdr);
-  size_t ip_payload_len = raw_payload_len - sizeof(struct iphdr);
-
-  if (node_type == NODE_UDP) {
-    struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-    char *udp_payload = ip_payload + sizeof(struct udphdr);
-    printf("Received IP: %s, Source Port: %hu, Dest Port: %hu, Payload: %s\n",
-           addr, ntohs(udp_hdr_p->uh_sport), ntohs(udp_hdr_p->uh_dport),
-           udp_payload);
+  if (node_type == NODE_FTP) {
+    for (int d = 1; d >= 0; d--) {
+      if (tcp_recv_check(d)) {
+        ssize_t tcp_recv_len = tcp_handle_recv(d);
+        if (d == 0 && tcp_recv_len >= 0) {
+          ftp_handle_reply(tcp_recv_len);
+        }
+        tcp_interrupted[d] = false;
+        break;
+      }
+    }
   } else if (node_type == NODE_NAT) {
-    if (ip_hdr_p->saddr != addr_host.s_addr) {
+    if (ip_recv_hdr_p->saddr != addr_host.s_addr ||
+        ip_recv_hdr_p->protocol == IPPROTO_TCP) {
       return;
     }
-    ip_hdr_p->saddr = 0;
-    if (ip_hdr_p->protocol == IPPROTO_UDP) {
-      struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
-      if (udp_hdr_p->uh_sport != htons(11111)) {
-        return;
-      }
-      udp_hdr_p->uh_sport = htons(22222);
+    ip_recv_hdr_p->saddr = addr_nat.s_addr;
+    if (tcp_recv_hdr_p->th_sport == htons(port_host[0])) {
+      tcp_recv_hdr_p->th_sport = htons(port_nat[0]);
+    } else if (tcp_recv_hdr_p->th_sport == htons(port_host[1])) {
+      tcp_recv_hdr_p->th_sport = htons(port_nat[1]);
+    } else {
+      return;
     }
+    tcp_fill_checksum(raw_recv_payload, raw_recv_len);
     struct sockaddr_in saddr_dest = {
         .sin_family = AF_INET,
-        .sin_addr = ip_hdr_p->daddr,
+        .sin_addr = ip_recv_hdr_p->daddr,
         .sin_port = 0,
     };
-    if (sendto(ip_send_fd, recv_raw, raw_payload_len, 0,
+    if (sendto(ip_send_fd, raw_recv_payload, raw_recv_len, 0,
                (struct sockaddr *)&saddr_dest, sizeof(saddr_dest)) < 0) {
       perror(NULL);
     }
@@ -180,42 +172,16 @@ static void mac_handle_recv(const bool *const bits, const size_t len) {
 }
 
 int main(int argc, char **argv) {
-  if (argc <= 1) {
+  if (argc <= 2) {
     fprintf(stderr, "Missing argument\n");
     return EXIT_FAILURE;
   }
 
-  if (strcmp(argv[1], "send") == 0) {
-    mac_send = true;
-  } else if (strcmp(argv[1], "recv") == 0) {
-    mac_recv = true;
-  } else if (strcmp(argv[1], "nat") == 0) {
+  if (strcmp(argv[1], "nat") == 0) {
     node_type = NODE_NAT;
-    mac_send = true;
-    mac_recv = true;
     mac_self = 2;
     mac_other = 1;
-    ip_send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
-    if (ip_send_fd < 0) {
-      perror(NULL);
-      return EXIT_FAILURE;
-    }
-    ip_recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
-    if (ip_recv_fd < 0) {
-      perror(NULL);
-      return EXIT_FAILURE;
-    }
-    struct sockaddr_in saddr_bind = {
-        .sin_family = AF_INET,
-        .sin_port = 0,
-        .sin_addr = INADDR_ANY,
-    };
-    if (bind(ip_recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) <
-        0) {
-      perror(NULL);
-      return EXIT_FAILURE;
-    }
-  } else {
+  } else if (strcmp(argv[1], "ftp") != 0) {
     fprintf(stderr, "Invalid argument: %s\n", argv[1]);
     return EXIT_FAILURE;
   }
@@ -225,39 +191,36 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  int arg_idx = 2;
-
-  if (mac_send && node_type != NODE_NAT) {
-    if (argc <= 2) {
-      fprintf(stderr, "Missing argument\n");
-      return EXIT_FAILURE;
-    }
-
-    char *addr_str = argv[2];
-
-    if (node_type == NODE_UDP) {
-      char *port_str = strchr(addr_str, ':');
-      if (port_str == NULL) {
-        fprintf(stderr, "Missing port number\n");
-        return EXIT_FAILURE;
-      }
-      port_dest = atoi(port_str + 1);
-      if (port_dest < 0 || port_dest > UINT16_MAX) {
-        fprintf(stderr, "Invalid port number: %d\n", port_dest);
-        return EXIT_FAILURE;
-      }
-      *port_str = '\0';
-    }
-
-    if (inet_pton(AF_INET, addr_str, &addr_dest) == 0) {
-      fprintf(stderr, "Invalid IP address: %s\n", addr_str);
-      return EXIT_FAILURE;
-    }
-
-    arg_idx = 3;
+  if (inet_pton(AF_INET, argv[2],
+                node_type == NODE_NAT ? &addr_nat : &addr_dest[0]) == 0) {
+    fprintf(stderr, "Invalid IP address: %s\n", argv[2]);
+    return EXIT_FAILURE;
   }
 
-  for (int i = arg_idx; i < argc; i++) {
+  if (node_type == NODE_NAT) {
+    ip_send_fd = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if (ip_send_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    ip_recv_fd = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+    if (ip_recv_fd < 0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+    struct sockaddr_in saddr_bind = {
+        .sin_family = AF_INET,
+        .sin_port = 0,
+        .sin_addr = addr_nat,
+    };
+    if (bind(ip_recv_fd, (struct sockaddr *)&saddr_bind, sizeof(saddr_bind)) <
+        0) {
+      perror(NULL);
+      return EXIT_FAILURE;
+    }
+  }
+
+  for (int i = 3; i < argc; i++) {
     if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
@@ -270,6 +233,15 @@ int main(int argc, char **argv) {
     }
   }
 
+  srand(time_ns());
+  port_host[0] = 11111;
+  port_host[1] = 11110;
+  port_nat[0] = rand();
+  port_nat[1] = rand();
+
+  pthread_t ftp_input_thread;
+  pthread_create(&ftp_input_thread, NULL, ftp_input_loop, NULL);
+
   phy_init();
   pthread_t recv_thread;
   pthread_create(&recv_thread, NULL, phy_receive_loop, NULL);
@@ -280,8 +252,9 @@ int main(int argc, char **argv) {
   const uint16_t recv_data_header =
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
-  while (mac_send || mac_recv) {
-    if (mac_send && mac_ack_want == 0) {
+  while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
+         !ftp_input_stopped) {
+    if (mac_ack_want == 0) {
       mac_send_prepare();
       if (mac_ack_want != 0) {
         mac_send_retry();
@@ -291,19 +264,22 @@ int main(int argc, char **argv) {
     int64_t poll_timeout = 1000000;
     if (phy_poll_frame(&poll_timeout)) {
       bool bits[PHY_PAYLOAD_MAX];
-      const size_t len = phy_receive_frame(bits) - MAC_HEADER_LEN;
+      mac_recv_bits_len = phy_receive_frame(bits);
       const uint16_t header = compose_u16(bits);
-      if (mac_recv && (header & 0xFFF0) == recv_data_header) {
+      if ((header & 0xFFF0) == recv_data_header) {
         const int seq = header & 0xF;
         mac_send_ack(seq);
         static int recv_seq = 0;
         if (seq == recv_seq) {
-          mac_handle_recv(bits + MAC_HEADER_LEN, len);
+          mac_handle_recv();
           recv_seq = (recv_seq + 1) & 0xF;
         }
       } else if (mac_ack_want != 0 && header == mac_ack_want) {
         mac_send_seq = (mac_send_seq + 1) & 0xF;
         mac_ack_want = 0;
+        if (node_type == NODE_FTP) {
+          tcp_after_send(mac_send_d);
+        }
       }
       continue;
     }
