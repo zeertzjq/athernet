@@ -45,7 +45,7 @@ static uint16_t mac_ack_want = 0;
 static int64_t mac_ack_timeout = 0;
 
 static struct in_addr addr_nat;
-static uint16_t port_nat[2];
+static uint16_t port_nat[2] = {0, 0};
 
 static int ip_send_fd = -1;
 static int ip_recv_fd = -1;
@@ -236,11 +236,15 @@ int main(int argc, char **argv) {
   srand(time_ns());
   port_host[0] = 11111;
   port_host[1] = 11110;
-  port_nat[0] = rand();
-  port_nat[1] = rand();
+  if (node_type == NODE_NAT) {
+    port_nat[0] = rand();
+    port_nat[1] = rand();
+  }
 
   pthread_t ftp_input_thread;
-  pthread_create(&ftp_input_thread, NULL, ftp_input_loop, NULL);
+  if (node_type == NODE_FTP) {
+    pthread_create(&ftp_input_thread, NULL, ftp_input_loop, NULL);
+  }
 
   phy_init();
   pthread_t recv_thread;
@@ -252,8 +256,9 @@ int main(int argc, char **argv) {
   const uint16_t recv_data_header =
       MAC_HEADER(mac_self, mac_other, FRAME_DATA, 0);
 
-  while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
-         !ftp_input_stopped) {
+  while (node_type == NODE_NAT ||
+         (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
+          !ftp_input_stopped)) {
     if (mac_ack_want == 0) {
       mac_send_prepare();
       if (mac_ack_want != 0) {
