@@ -132,7 +132,7 @@ static void mac_handle_recv(void) {
   for (size_t i = 0; i < mac_payload_bits_len; i += 8) {
     raw_recv_payload[i / 8] = compose_u8(mac_payload_bits + MAC_HEADER_LEN + i);
   }
-  raw_recv_len = mac_recv_bits_len / 8;
+  raw_recv_len = mac_payload_bits_len / 8;
 
   if (node_type == NODE_FTP) {
     for (int d = 1; d >= 0; d--) {
@@ -146,6 +146,7 @@ static void mac_handle_recv(void) {
       }
     }
   } else if (node_type == NODE_NAT) {
+    fprintf(stderr, "%zu\n", raw_recv_len);
     if (ip_recv_hdr_p->saddr != addr_host.s_addr ||
         ip_recv_hdr_p->protocol == IPPROTO_TCP) {
       return;
