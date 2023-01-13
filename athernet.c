@@ -91,15 +91,15 @@ static void mac_send_prepare(void) {
       return;
     }
     ip_send_hdr_p[mac_send_d]->daddr = addr_host.s_addr;
-    if (tcp_recv_hdr_p->th_sport == htons(port_nat[0])) {
-      tcp_recv_hdr_p->th_sport = htons(port_host[0]);
-    } else if (tcp_recv_hdr_p->th_sport == htons(port_nat[1])) {
-      tcp_recv_hdr_p->th_sport = htons(port_host[1]);
+    if (tcp_send_hdr_p[mac_send_d]->th_dport == htons(port_nat[0])) {
+      tcp_send_hdr_p[mac_send_d]->th_dport = htons(port_host[0]);
+    } else if (tcp_send_hdr_p[mac_send_d]->th_dport == htons(port_nat[1])) {
+      tcp_send_hdr_p[mac_send_d]->th_dport = htons(port_host[1]);
     } else {
       return;
     }
     raw_send_len[mac_send_d] = raw_len;
-    tcp_fill_checksum(raw_recv_payload, raw_send_len[mac_send_d]);
+    tcp_fill_checksum(raw_send_payload[mac_send_d], raw_send_len[mac_send_d]);
   }
   ip_send_hdr_p[mac_send_d]->tot_len = raw_send_len[mac_send_d];
 
