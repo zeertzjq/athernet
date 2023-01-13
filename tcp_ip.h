@@ -24,7 +24,6 @@ extern struct tcphdr *const tcp_recv_hdr_p;
 extern char *const tcp_send_payload[2];
 extern FILE *tcp_output_file[2];
 extern int64_t tcp_timeout[2];
-extern bool tcp_interrupted[2];
 extern int tcp_state[2];
 
 void tcp_fill_checksum(char *raw_payload, size_t raw_len);

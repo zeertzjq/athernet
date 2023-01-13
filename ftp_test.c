@@ -102,7 +102,6 @@ int main(int argc, char **argv) {
           if (d == 0 && tcp_recv_len >= 0) {
             ftp_handle_reply(tcp_recv_len);
           }
-          tcp_interrupted[d] = false;
           break;
         }
       }

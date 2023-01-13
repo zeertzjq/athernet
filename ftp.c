@@ -200,7 +200,5 @@ void ftp_handle_reply(const size_t reply_len) {
       ftp_handle_227(reply_payload);
     }
   }
-  if (!tcp_interrupted[0]) {
-    ftp_cmd_len = 0;
-  }
+  ftp_cmd_len = 0;
 }
