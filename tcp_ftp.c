@@ -465,7 +465,7 @@ int main(int argc, char **argv) {
         ftp_close_file();
         ftp_cmd[ftp_cmd_len - 2] = '\0';
         tcp_output_file[1] = fopen(ftp_cmd + 5, "w");
-        ftp_cmd[ftp_cmd_len - 2] = '\n';
+        ftp_cmd[ftp_cmd_len - 2] = '\r';
       }
       tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
