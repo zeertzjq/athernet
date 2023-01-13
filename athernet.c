@@ -52,18 +52,18 @@ static int ip_recv_fd = -1;
 
 static void mac_send_prepare(void) {
   struct iphdr *ip_hdr_p = (struct iphdr *)raw_send_payload;
-  *ip_hdr_p = (struct iphdr){
-      .ihl = 5,
-      .version = 4,
-      .ttl = 255,
-      .protocol = IPPROTO_UDP,
-      .saddr = addr_host.s_addr,
-      .daddr = addr_dest.s_addr,
-  };
   char *ip_payload = raw_send_payload + sizeof(struct iphdr);
   size_t raw_payload_len = 0;
 
   if (node_type == NODE_UDP) {
+    *ip_hdr_p = (struct iphdr){
+        .ihl = 5,
+        .version = 4,
+        .ttl = 255,
+        .protocol = IPPROTO_UDP,
+        .saddr = addr_host.s_addr,
+        .daddr = addr_dest.s_addr,
+    };
     struct udphdr *udp_hdr_p = (struct udphdr *)ip_payload;
     char *udp_payload = ip_payload + sizeof(struct udphdr);
     if (fgets(udp_payload,
@@ -93,7 +93,9 @@ static void mac_send_prepare(void) {
       }
       return;
     }
-    struct iphdr *ip_hdr_p = (struct iphdr *)raw_send_payload;
+    if (ip_hdr_p->ihl != 5) {
+      return;
+    }
     size_t ip_payload_len = len - sizeof(struct iphdr);
     ip_hdr_p->daddr = addr_host.s_addr;
     if (ip_hdr_p->protocol == IPPROTO_UDP) {
