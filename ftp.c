@@ -142,9 +142,13 @@ void ftp_prepare_cmd(void) {
     ftp_close_file();
   } else if (ftp_cmd[0] == 'R') {
     ftp_close_file();
-    if (ftp_cmd_len > 5 + 2) {
+    const char *retr_fname = ftp_cmd + 4;
+    while (*retr_fname == ' ') {
+      retr_fname++;
+    }
+    if (ftp_cmd + ftp_cmd_len - retr_fname > 2) {
       ftp_cmd[ftp_cmd_len - 2] = '\0';
-      tcp_output_file[1] = fopen(ftp_cmd + 5, "w");
+      tcp_output_file[1] = fopen(retr_fname, "w");
       ftp_cmd[ftp_cmd_len - 2] = '\r';
     }
   }
