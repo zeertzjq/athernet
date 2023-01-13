@@ -116,7 +116,7 @@ static void mac_send_prepare(void) {
 
 static void mac_send_retry(void) {
   phy_transmit_frame(mac_send_bits, mac_send_bits_len);
-  mac_ack_timeout = time_ns() + 100000000;
+  mac_ack_timeout = time_ns() + 80000000;
 }
 
 static void mac_send_ack(const int seq) {
