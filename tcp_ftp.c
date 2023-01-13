@@ -12,8 +12,8 @@
 
 #include "common.h"
 
-#define RAW_SEND_MAX 600
-#define RAW_RECV_MAX 640
+#define RAW_SEND_MAX 200
+#define RAW_RECV_MAX 240
 static struct in_addr addr_host;
 static struct in_addr addr_dest[2];
 static uint16_t port_host[2] = {0, 0};
@@ -95,7 +95,7 @@ static void tcp_prepare_syn(const bool d) {
       .th_seq = htonl(rand()),
       .th_off = 5,
       .th_flags = TH_SYN,
-      .th_win = htons(160),
+      .th_win = htons(RAW_RECV_MAX - 80),
   };
   raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
   tcp_fill_checksum(d);
@@ -475,7 +475,7 @@ int main(int argc, char **argv) {
       if (errno != EAGAIN && errno != EWOULDBLOCK) {
         perror(NULL);
       }
-    } else {
+    } else if (ip_recv_hdr_p->ihl == 5) {
       raw_recv_len = recv_len;
       for (int d = 1; d >= 0; d--) {
         if (tcp_state[d] != TCP_CLOSE &&
