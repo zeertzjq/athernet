@@ -190,14 +190,14 @@ static ssize_t tcp_handle_recv(const bool d) {
     need_reply = true;
     seq_extra = 1;
   }
+  tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
   if (need_reply) {
     if (raw_send_len[d] > 0) {
       tcp_interrupted[d] = true;
     }
     tcp_want_seq[d] = ntohl(tcp_recv_hdr_p->th_seq) + tcp_recv_len + seq_extra;
-    tcp_send_hdr_p[d]->th_flags = TH_ACK;
-    tcp_send_hdr_p[d]->th_seq = tcp_recv_hdr_p->th_ack;
     tcp_send_hdr_p[d]->th_ack = htonl(tcp_want_seq[d]);
+    tcp_send_hdr_p[d]->th_flags = TH_ACK;
     raw_send_len[d] = sizeof(struct iphdr) + sizeof(struct tcphdr);
     tcp_fill_checksum(d);
     tcp_timeout[d] = 0;
