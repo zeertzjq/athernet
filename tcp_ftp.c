@@ -283,7 +283,7 @@ static const char *ftp_parse_get(void) {
 #define FTP_CMD_MAXLEN (RAW_SEND_MAX - 50)
 static char ftp_cmd[RAW_SEND_MAX - 40];
 static volatile sig_atomic_t ftp_cmd_len = 0;
-static volatile sig_atomic_t input_stopped = 0;
+static volatile sig_atomic_t ftp_input_stopped = 0;
 static bool ftp_file_end = false;
 
 static void ftp_close_file(void) {
@@ -342,7 +342,7 @@ static void ftp_handle_reply(const size_t reply_len) {
   }
 }
 
-static void *input_loop(void *args) {
+static void *ftp_input_loop(void *args) {
   bool past_cmd = false;
   const char *cmd = NULL;
   size_t cmd_len = 0;
@@ -352,7 +352,7 @@ static void *input_loop(void *args) {
     }
     const int c = getchar();
     if (c == EOF) {
-      input_stopped = 1;
+      ftp_input_stopped = 1;
       return NULL;
     }
     if (!past_cmd) {
@@ -424,14 +424,14 @@ int main(int argc, char **argv) {
   port_host[0] = rand();
   port_host[1] = rand();
 
-  pthread_t input_thread;
-  pthread_create(&input_thread, NULL, input_loop, NULL);
+  pthread_t ftp_input_thread;
+  pthread_create(&ftp_input_thread, NULL, ftp_input_loop, NULL);
 
   while (tcp_state[0] != TCP_CLOSE || tcp_state[1] != TCP_CLOSE ||
-         !input_stopped) {
-    if (!input_stopped && tcp_state[0] == TCP_CLOSE) {
+         !ftp_input_stopped) {
+    if (!ftp_input_stopped && tcp_state[0] == TCP_CLOSE) {
       tcp_prepare_syn(0);
-    } else if (input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
+    } else if (ftp_input_stopped && tcp_state[0] == TCP_ESTABLISHED) {
       tcp_prepare_fin(0);
     }
     for (int d = 1; d >= 0; d--) {
@@ -498,7 +498,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  pthread_join(input_thread, NULL);
+  pthread_join(ftp_input_thread, NULL);
 
   return 0;
 }
