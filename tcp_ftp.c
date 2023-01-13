@@ -280,8 +280,8 @@ static const char *ftp_parse_get(void) {
   return NULL;
 }
 
-#define FTP_CMD_MAXLEN 400
-static char ftp_cmd[FTP_CMD_MAXLEN];
+#define FTP_CMD_MAXLEN (RAW_SEND_MAX - 50)
+static char ftp_cmd[RAW_SEND_MAX - 40];
 static volatile sig_atomic_t ftp_cmd_len = 0;
 static volatile sig_atomic_t input_stopped = 0;
 static bool ftp_file_end = false;
@@ -373,6 +373,10 @@ static void *input_loop(void *args) {
     }
     if (c == '\n') {
       if (cmd != NULL) {
+        if (cmd_len < 2 || ftp_cmd[cmd_len - 2] != '\r') {
+          ftp_cmd[cmd_len - 1] = '\r';
+          ftp_cmd[cmd_len++] = '\n';
+        }
         ftp_cmd_len = cmd_len;
       }
       past_cmd = false;
@@ -459,9 +463,9 @@ int main(int argc, char **argv) {
         ftp_close_file();
       } else if (ftp_cmd[0] == 'R') {
         ftp_close_file();
-        ftp_cmd[ftp_cmd_len - 1] = '\0';
+        ftp_cmd[ftp_cmd_len - 2] = '\0';
         tcp_output_file[1] = fopen(ftp_cmd + 5, "w");
-        ftp_cmd[ftp_cmd_len - 1] = '\n';
+        ftp_cmd[ftp_cmd_len - 2] = '\n';
       }
       tcp_prepare_data(0, ftp_cmd, ftp_cmd_len);
     }
