@@ -94,8 +94,12 @@ static void mac_send_prepare(void) {
     ip_send_hdr_p[mac_send_d]->daddr = addr_host.s_addr;
     if (tcp_send_hdr_p[mac_send_d]->th_dport == htons(port_nat[0])) {
       tcp_send_hdr_p[mac_send_d]->th_dport = htons(port_host[0]);
+      printf("NAT: Forwarding %zu bytes to 192.168.1.2:%hu", raw_len,
+             port_host[0]);
     } else if (tcp_send_hdr_p[mac_send_d]->th_dport == htons(port_nat[1])) {
       tcp_send_hdr_p[mac_send_d]->th_dport = htons(port_host[1]);
+      printf("NAT: Forwarding %zu bytes to 192.168.1.2:%hu", raw_len,
+             port_host[1]);
     } else {
       return;
     }
@@ -155,8 +159,12 @@ static void mac_handle_recv(void) {
     ip_recv_hdr_p->saddr = addr_nat.s_addr;
     if (tcp_recv_hdr_p->th_sport == htons(port_host[0])) {
       tcp_recv_hdr_p->th_sport = htons(port_nat[0]);
+      printf("NAT: Forwarding %zu bytes from 192.168.1.2:%hu", raw_recv_len,
+             port_host[0]);
     } else if (tcp_recv_hdr_p->th_sport == htons(port_host[1])) {
       tcp_recv_hdr_p->th_sport = htons(port_nat[1]);
+      printf("NAT: Forwarding %zu bytes from 192.168.1.2:%hu", raw_recv_len,
+             port_host[1]);
     } else {
       return;
     }
