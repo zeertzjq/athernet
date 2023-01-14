@@ -29,6 +29,7 @@ static enum {
 
 static int mac_self = 1;
 static int mac_other = 2;
+static bool mac_ack = false;
 
 enum {
   FRAME_DATA = 0,
@@ -116,7 +117,9 @@ static void mac_send_prepare(void) {
 
 static void mac_send_retry(void) {
   phy_transmit_frame(mac_send_bits, mac_send_bits_len);
-  mac_ack_timeout = time_ns() + 80000000;
+  if (mac_ack) {
+    mac_ack_timeout = time_ns() + 80000000;
+  }
 }
 
 static void mac_send_ack(const int seq) {
@@ -220,7 +223,9 @@ int main(int argc, char **argv) {
   }
 
   for (int i = 3; i < argc; i++) {
-    if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
+    if (strcmp(argv[i], "--ack") == 0) {
+      mac_ack = true;
+    } else if (strncmp(argv[i], S_LEN("--volume=")) == 0) {
       volume = atoi(argv[i] + LEN("--volume="));
     } else if (strncmp(argv[i], S_LEN("--self=")) == 0) {
       mac_self = atoi(argv[i] + LEN("--self=")) & 0xF;
@@ -262,6 +267,12 @@ int main(int argc, char **argv) {
       mac_send_prepare();
       if (mac_ack_want != 0) {
         mac_send_retry();
+        if (!mac_ack) {
+          mac_ack_want = 0;
+          if (node_type == NODE_FTP) {
+            tcp_after_send(mac_send_d);
+          }
+        }
       }
     }
 
@@ -270,13 +281,17 @@ int main(int argc, char **argv) {
       mac_recv_bits_len = phy_receive_frame(mac_recv_bits);
       const uint16_t header = compose_u16(mac_recv_bits);
       if ((header & 0xFFF0) == recv_data_header) {
-        const int seq = header & 0xF;
-        static int recv_seq = 0;
-        if (seq == recv_seq) {
+        if (mac_ack) {
+          const int seq = header & 0xF;
+          static int recv_seq = 0;
+          if (seq == recv_seq) {
+            mac_handle_recv();
+            recv_seq = (recv_seq + 1) & 0xF;
+          }
+          mac_send_ack(seq);
+        } else {
           mac_handle_recv();
-          recv_seq = (recv_seq + 1) & 0xF;
         }
-        mac_send_ack(seq);
       } else if (mac_ack_want != 0 && header == mac_ack_want) {
         mac_send_seq = (mac_send_seq + 1) & 0xF;
         mac_ack_want = 0;
