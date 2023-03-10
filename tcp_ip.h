@@ -1,3 +1,6 @@
+#ifndef ATHERNET_TCP_IP_H
+#define ATHERNET_TCP_IP_H
+
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -35,3 +38,5 @@ bool tcp_need_retry(bool d);
 void tcp_after_send(bool d);
 bool tcp_recv_check(bool d);
 ssize_t tcp_handle_recv(bool d);
+
+#endif // ATHERNET_TCP_IP_H

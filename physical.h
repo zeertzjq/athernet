@@ -1,5 +1,5 @@
-#ifndef ATNET_PHYSICAL_H
-#define ATNET_PHYSICAL_H
+#ifndef ATHERNET_PHYSICAL_H
+#define ATHERNET_PHYSICAL_H
 
 #include <signal.h>
 #include <stdbool.h>
@@ -19,4 +19,4 @@ void *phy_receive_loop(void *args);
 bool phy_poll_frame(int64_t *timeout_ns);
 size_t phy_receive_frame(bool *bits);
 
-#endif // ATNET_PHYSICAL_H
+#endif // ATHERNET_PHYSICAL_H

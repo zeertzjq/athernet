@@ -1,5 +1,5 @@
-#ifndef ATNET_COMMON_H
-#define ATNET_COMMON_H
+#ifndef ATHERNET_COMMON_H
+#define ATHERNET_COMMON_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -65,4 +65,4 @@ static inline void sleep_ns(long ns) {
   nanosleep(&ts, NULL);
 }
 
-#endif // ATNET_COMMON_H
+#endif // ATHERNET_COMMON_H
