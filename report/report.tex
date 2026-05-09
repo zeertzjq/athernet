@@ -1,0 +1,63 @@
+% vim: spell
+\documentclass{scrartcl}
+\usepackage{amsmath}
+\usepackage{indentfirst}
+\usepackage{listings}
+
+\title{CS120 Project Final Report}
+\author{Zhou Jiaqi \and Liu Yule}
+\date{}
+
+\lstset{
+  basicstyle=\ttfamily
+}
+
+\begin{document}
+
+\maketitle
+
+\section*{Project 0}
+
+The main purpose of Project 0 is finding a programming language and an audio library to use. We tested ALSA (Advance Linux Sound Architecture) with C, as ALSA libraries are quite lightweight and most ALSA examples are in C, and they ended up being the audio library and programming language we used in this whole project. We also chose a sample rate of $48000$ Hz.
+
+To play and record sound simultaneously, two threads are needed, and we used pthreads (POSIX threads) for threading. We used one thread to record sound and then play it, and another thread to play sound while recording. When playing the recorded sound, ALSA's \lstinline{snd_pcm_writei} function sometimes gives a confusing ``broken pipe'' error, and after reading ALSA's documentation we found out that this happens when the all samples written by the last call to \lstinline{snd_pcm_writei} have been played and a buffer underrun occurs. To fix this, one has to either keep writing zeros to the playback device when it needs to be silent after playing some sound, or to call \lstinline{snd_pcm_drain} on the playback device after writing some samples to it and call \lstinline{snd_pcm_prepare} on it before writing to it again after some silence. In the case of Project 0, the two calls to \lstinline{snd_pcm_writei} actually come from two different threads and one thread has to wait for the other, so we went for the second approach.
+
+\section*{Project 1}
+
+An important part of Project 1 is designing a frame header that can be detected. We designed a frame header that is $480$ samples ($0.01$ seconds) long and is defined by the function
+\begin{equation*}
+  f_i = \cos\left(2\pi \cdot \left(\frac{i}{24} + \frac{i^2}{2880}\right)\right)
+\end{equation*}
+where $i$ is the $0$-based index of a sample in the header. This frame header is symmetric, with lower frequencies at the start and the end, and higher frequencies in the middle.
+
+We spent a lot of time trying to make frame header detection work reliably. Let $s_0, \ldots, s_{479}$ be the last $480$ samples received, and
+\begin{equation*}
+  S_1 = \sum_{i = 0}^{479} \left\lvert s_i \right\rvert,\ S_2 = \sum_{i = 0}^{479} s_i^2,\ P_1 = \frac{S_1}{240 S_2} \sum_{i = 240}^{479} s_i f_{i - 240},\ P_2 = \frac{S_1}{480 S_2} \sum_{i = 0}^{479} s_i f_i.
+\end{equation*}
+A frame header is considered to have been found if $P_2$ reaches a local maximum, and $P_1$ reached a local maximum above a threshold $240$ samples ago. This threshold can be hard to decide as noise may be detected as a frame header if the threshold is too low, while some frame headers may be missed if the threshold is too high. For Project 1 we eventually settled on a threshold of $0.3$.
+
+To encode a bit, we used phase-shift keying with a carrier wave of $10000$ Hz and $48$ samples ($0.001$ seconds) for each bit. We didn't spend much time testing different ways to encode and decode a bit as we had spent a lot of time on frame header detection.
+
+\section*{Project 2}
+
+Wired sound transmission is significantly less noisy, while Project 2 requires a much higher throughput than Project 1, so we needed to reduce the length of a bit as well as the frame header length. To encode a bit, we used two positive samples and one negative sample to indicate a bit $1$ and two negative samples and one positive sample to indicate a bit $0$, which reduced the length of a bit to $3$ samples. We had tried several ways to further reduce the length of a bit, but none of them worked. We shrank the frame header length to $160$ samples by taking the first $80$ samples and last $80$ samples of the frame header used in Project 1. Frame header detection is similar to Project 1, but we removed the requirement on $P_2$, changed $480$ and $240$ to $160$ and $80$ respectively, and raised the threshold for $P_1$ to $0.4$.
+
+We used a separate thread to read samples from the capture device periodically, detect frame headers, decode bits in a frame, and verify the checksum of each received frame. We put $16$ bits encoding a frame's length right after its header and put its CRC-32 checksum at the end of it, and if a received frame has an unexpected length or a wrong checksum it is dropped and not seen by the main thread. The main thread is responsible for most other things. For parts 2 and 3 they include reading data from input, adding MAC headers to frames, sending frames, writing received data frames to output, replying ACK frames to received data frames, and resending a data frame if the ACK for it hasn't been received within timeout. For parts 4 and 5 there is no need to read or write files, but the main thread needs to keep track of the number and time of frames.
+
+It was hard to make CSMA work well in part 3. We made the receiving thread calculate the average volume every time it reads from the capture device, and the main thread block when it tries to transmit a frame when the average volume is too high. We increased the ACK timeout, and making the main thread transmit a frame three times on every retry also surprisingly made the transmission a bit faster, but we eventually didn't manage to make the transmission finish within $60$ seconds. It usually took around $70$ seconds.
+
+\section*{Project 3}
+
+For Project 3, we first implemented several programs that send and receive UDP datagrams and ICMP packets as raw IP packets. We used raw sockets and functions provided by GNU C Library to send and receive raw IP packets. GNU C Library also provides structures for headers of various protocols, so manipulation of protocol headers inside a raw IP packet can be achieved by casting pointers.
+
+Like Project 2, each Athernet node still runs two threads in Project 3, but the NAT (NODE2) receives and sends raw IP packets instead of reading and writing files. In addition to modifying destination or source addresses in the IP header, for UDP datagrams the NAT also modifies destination or source ports in the UDP header, and for ICMP packets the NAT also modifies the 17th and 18th bytes in the ICMP payload. NODE1 constructs UDP datagrams or ICMP packets as raw IP packets and sends them through Athernet to be forwarded by NODE2, and handles raw IP packets received from Athernet.
+
+\section*{Project 4}
+
+For Project 4, we first implemented several functions to parse a typed command and check which FTP command to be implemented in this project the typed command is most similar to. After this we implemented several function that are necessary for a stop-and-wait TCP protocol, including calculating the checksum for a segment, preparing a SYN or FIN segment, and, after receiving a segment, handling TCP state transition and maybe preparing an ACK segment. The FTP protocol requires two separate TCP connections as control connection and data connection, so two TCP states need to be maintained separately. Then we implemented an FTP client using raw IP packets and these functions, connected to several FTP servers and analyzed the connections using Wireshark to find out bugs in our TCP and FTP implementations. We did find some bugs in our code, but some servers also had some strange behavior like resending a TCP segment multiple times even though the client responded with a correct ACK segment each time, as if the ACK segment was lost each time. This also happened when we tried some other FTP client, so it may be a problem in the server or somewhere else in the connection.
+
+After fixing several bugs in our TCP and FTP implementations, we changed the Athernet nodes to use these protocols. This didn't take much time, as for the NAT (NODE2) we just needed to modify TCP ports instead of UDP ports or ICMP payload bytes and recalculate TCP checksums, and for NODE1 we just needed to call the TCP and FTP functions we implemented. NODE1 needs an additional thread so that it can warn the user immediately when the user types an ambiguous FTP command.
+
+Unlike UDP and ICMP, the TCP protocol itself handles lost segments, so it is possible to disable ACK at MAC layer to discard MAC frames that aren't transmitted correctly as if the TCP segment carried by it is lost. We tried this, and while it sometimes made a large file take about 30\% less time to send, it also made TCP retransmission more likely, causing some FTP replies to take longer to arrive.
+
+\end{document}
